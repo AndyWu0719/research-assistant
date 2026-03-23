@@ -1,4 +1,4 @@
-# Research Assistant
+# Research Assistant V 0.0.1 2026.3.23
 
 `research-assistant` 是一个面向本地使用场景的研究助手项目：网页负责参数配置、结果展示和配置落盘，本地 `Codex CLI` 负责实际执行研究任务，`Codex app` 继续负责 Automations。默认使用你本机已经登录的 `Codex CLI`，优先复用 ChatGPT 订阅访问能力，而不是默认要求 `OpenAI API key`。
 
@@ -185,26 +185,6 @@ python ui/launcher.py
 - 本地 PDF 的文本抽取质量受源文件质量影响，证据不足时应接受“不确定”结果
 - `outputs/` 是本地产物目录，不应默认提交运行结果、下载的 PDF 或 prompt request
 - `configs/daily_profile.yaml` 与 `configs/automations/daily_top10.yaml` 会被网页真实改写；公开提交前应确认里面没有个人研究方向、私有约束或敏感信息
-
-## 仓库提交建议
-
-建议提交的内容：
-
-- 所有源码：`ui/`、`skills/`
-- 全局规则：`AGENTS.md`
-- 默认配置与说明：`configs/`
-- 仓库元信息：`README.md`、`.gitignore`、`LICENSE`、`requirements.txt`
-- `outputs/` 目录骨架和 `.gitkeep`
-
-建议不要提交的内容：
-
-- `outputs/` 下的运行结果
-- `outputs/pdfs/` 下下载的 PDF
-- `outputs/prompt_requests/` 下的 prompt 回放文件
-- `__pycache__/`、`.pyc`、`.DS_Store`
-- 任何包含个人研究主题、私有路径、账号信息或临时实验结果的本地改写配置
-
-`outputs/` 目录的提交策略见 [outputs/README.md](/Users/andywu/Documents/codex_workplace/projects/research-assistant/outputs/README.md)。
 
 ## License
 
