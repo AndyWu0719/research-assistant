@@ -1,191 +1,331 @@
-# Research Assistant V 0.0.1 2026.3.23
+# Research Assistant
 
-`research-assistant` 是一个面向本地使用场景的研究助手项目：网页负责参数配置、结果展示和配置落盘，本地 `Codex CLI` 负责实际执行研究任务，`Codex app` 继续负责 Automations。默认使用你本机已经登录的 `Codex CLI`，优先复用 ChatGPT 订阅访问能力，而不是默认要求 `OpenAI API key`。
+> Current Version / 当前版本: `V0.1.0-2026.03.24`  
+> Previous Version / 之前版本: `V0.0.1-2026.03.23`
 
-## 项目简介
+`research-assistant` is a local research workbench. The web UI handles parameterized interaction, status display, and result review; the local `Codex CLI` performs the real task execution; `Codex app` remains responsible for Automations.
 
-这个项目的目标不是做一个云端 SaaS，而是把常见研究工作流整理成一个本地可运行、可扩展、可复用的工具箱。当前重点是：
+`research-assistant` 是一个本地研究工作台。网页负责参数化交互、执行状态与结果回读；本地 `Codex CLI` 负责真实执行；`Codex app` 继续负责 Automations。
 
-- 用网页统一收集研究参数、展示状态和回读结果
-- 用本地 `codex exec` 执行真实任务，而不是只生成 prompt
-- 用 `AGENTS.md + skills + configs` 固化研究流程
-- 用 `outputs/` 保存结构化产出，方便网页再次读取
+The default path is:
 
-默认执行链路如下：
+```text
+Web UI -> Local Codex CLI -> skills / configs / outputs
+```
+
+默认链路为：
+
+```text
+网页 -> 本地 Codex CLI -> skills / configs / outputs
+```
+
+This project is not a direct OpenAI API integration, and it is not a prompt-only shell.
+
+本项目不是 OpenAI API 直连，也不是只生成 prompt 不执行的壳。
+
+## Version History / 版本记录
+
+| Version | Tag | Status | Summary |
+| --- | --- | --- | --- |
+| `V0.0.1-2026.03.23` | `2026.03.23` | Previous baseline / 上一版本基线 | Initial local web workbench baseline with launcher preflight, core page scaffolding, and outputs write-back. Advanced page closure, bilingual switching, and stronger PDF extraction were still incomplete. / 建立了本地网页工作台基线，具备 launcher 预检查、核心页面框架与 outputs 回写；但高级页面闭环、完整双语切换与更强的 PDF 抽取仍未完全收尾。 |
+| `V0.1.0-2026.03.24` | `2026.03.24` | Current / 当前版本 | Adds full zh/en switching, real live smoke-tested research pages, PDF extraction and quality sidecars, unified collapsible advanced info, local preference persistence, automation filename hardening, and low-cost validation workflow. / 新增完整中英双语切换、真实 live smoke 通过的研究页面、PDF 抽取与质量 sidecar、统一折叠高级信息、本地偏好持久化、自动化文件命名加固，以及低成本验证工作流。 |
+
+## What Changed In `V0.1.0-2026.03.24` / `V0.1.0-2026.03.24` 更新内容
+
+- Full bilingual switching across UI, prompt construction, default output language, bridge messages, and launcher text.  
+  全站 UI、prompt 构建、默认输出语言、桥接状态消息与 launcher 终端提示已支持完整双语切换。
+- Real live smoke execution was completed for `Top 10 Literature Scan`, `Paper Deep Read`, `PDF Downloads`, `Topic Map`, `Idea Feasibility`, and `Constraint Explorer`.  
+  已对 `Top 10 Literature Scan`、`Paper Deep Read`、`PDF Downloads`、`Topic Map`、`Idea Feasibility`、`Constraint Explorer` 完成真实 live smoke 执行。
+- A PDF extraction and cleanup stage now runs before `paper-reader`, and writes cleaned text plus a quality sidecar to disk.  
+  `paper-reader` 前新增 PDF 文本抽取与清洗步骤，并将清洗文本与质量 sidecar 真实落盘。
+- Advanced information is now consistently collapsed by default across the site.  
+  全站高级信息已统一改为默认折叠展示。
+- User preferences are now persisted to local config files and restored after refresh or restart.  
+  用户偏好已写入本地配置文件，并支持刷新后与重启后恢复。
+- Automation configs no longer default to `daily_top10.yaml`; filenames are generated from the user task name plus a stable hash.  
+  自动化配置不再默认固定为 `daily_top10.yaml`，而是使用任务名称清洗后加稳定哈希生成文件名。
+- `ui/requirements.txt` now explicitly includes `pypdf` because PDF extraction depends on it.  
+  `ui/requirements.txt` 已显式加入 `pypdf`，因为 PDF 抽取链路依赖该库。
+
+## Architecture / 系统架构
 
 ```mermaid
 flowchart LR
-    A["Streamlit 网页"] --> B["本地 Codex CLI"]
-    B --> C["AGENTS.md + skills/"]
-    B --> D["configs/"]
-    B --> E["outputs/"]
-    F["Codex app Automations"] --> B
-    F --> G["手动选择 model / reasoning"]
+    A["Streamlit Web UI / 网页界面"] --> B["Prompt Builder / Prompt 构建"]
+    A --> C["Local Configs / 本地配置"]
+    B --> D["Local Codex CLI / 本地 Codex CLI"]
+    D --> E["Skills / 研究技能"]
+    D --> F["outputs/*.md + *.json"]
+    A --> F
+    A --> G["PDF Fetcher + PDF Extractor"]
+    G --> F
 ```
 
-## 核心功能
+## Project Scope / 项目定位
 
-- `Top 10 文献巡检`：收集主题、时间窗、来源和排序偏好，执行后写入 `outputs/daily_top10/`
-- `单篇论文精读`：支持 arXiv ID、DOI、URL、本地 PDF，结果写入 `outputs/paper_summaries/`
-- `方向论文地图`：围绕主题输出方向地图与阅读顺序，结果写入 `outputs/topic_maps/`
-- `想法可行性分析`：围绕想法、数据和资源约束输出可行性报告，结果写入 `outputs/feasibility_reports/`
-- `资源受限探索`：在算力、时间、数据约束下给出更可落地的方向建议，结果写入 `outputs/constraint_reports/`
-- `PDF 下载`：调用本地脚本真实下载 PDF 到 `outputs/pdfs/`，可串联后续精读
-- `自动化配置`：写入每日巡检配置，并生成适合粘贴到 Codex app Automation 的 prompt
+### English
 
-## 项目结构
+- Build a practical local research assistant around the user's already logged-in Codex CLI.
+- Keep the web layer focused on interaction, configuration, and results, instead of duplicating research logic in the frontend.
+- Preserve a real write-back workflow into `outputs/`, with Markdown reports and JSON sidecars for structured UI reading.
+- Prefer low-cost verification by default: use `economy` first, then move up only when basic validation cannot be completed.
+
+### 中文
+
+- 围绕用户本地已登录的 Codex CLI，构建一个可执行的研究助手。
+- 让网页层专注于交互、配置和结果展示，而不是把研究逻辑搬进前端。
+- 保持真实落盘到 `outputs/` 的工作流，Markdown 报告和 JSON sidecar 同步输出，便于结构化回读。
+- 默认优先低成本验证：先用 `economy`，只有在最基本验证无法完成时再升档。
+
+## Pages / 页面功能
+
+| Page | Main Use | Typical Inputs | Outputs |
+| --- | --- | --- | --- |
+| `Home` | Project overview, parameter glossary, defaults, recent outputs. / 项目说明、参数解释、默认值与最近产物总览。 | None / 无 | Status overview / 状态总览 |
+| `Top 10 Literature Scan` | Structured literature scan and ranking for a field. / 面向研究方向的结构化文献巡检与排序。 | Field, time range, sources, ranking profile, constraints, Top K / 研究领域、时间范围、来源、排序 profile、约束、Top K | `outputs/daily_top10/*.md` + `.json` |
+| `Paper Deep Read` | Structured deep reading for one paper. / 单篇论文结构化精读。 | arXiv ID, DOI, URL, local PDF / arXiv ID、DOI、URL、本地 PDF | `outputs/paper_summaries/*.md` + `.json` |
+| `PDF Downloads` | Real PDF download, optionally chained into deep reading. / 真实下载 PDF，并可串联精读。 | Paper references / 论文引用 | `outputs/pdfs/*.pdf` + `.source.json` |
+| `Topic Map` | Tiered paper map and reading path for a topic. / 为一个方向生成分层论文地图与阅读路径。 | Topic, time window, return count, ranking mode / topic、时间窗口、返回数量、排序方式 | `outputs/topic_maps/*.md` + `.json` |
+| `Idea Feasibility` | Feasibility analysis for a research idea. / 研究想法的可行性分析。 | Idea, target field, compute budget, data budget, risk preference / idea、目标领域、算力预算、数据预算、风险偏好 | `outputs/feasibility_reports/*.md` + `.json` |
+| `Constraint Explorer` | Constraint-aware direction exploration. / 现实约束下的方向探索。 | Field, compute limit, data limit, reproducibility/open-source preference / 研究领域、算力限制、数据限制、复现/开源偏好 | `outputs/constraint_reports/*.md` + `.json` |
+| `Automation Setup` | Save recurring scan configs and build Codex app automation prompts. / 保存周期性巡检配置并生成 Codex app automation prompt。 | Task name, field, time range, sources, quality profile, run time / 任务名、研究领域、时间范围、来源、质量档位、运行时间 | `configs/daily_profile.yaml`, `configs/automations/*.yaml` |
+
+## UI Conventions / 页面与交互规范
+
+- The sidebar uses custom navigation with title-cased page labels and a global language selector.  
+  左侧栏使用自定义导航，页面标题统一规范化，并提供全局语言切换。
+- Advanced information is collapsed by default, including raw prompts, output paths, debug payloads, PDF extraction details, config previews, and saved preferences.  
+  原始 prompt、输出路径、调试信息、PDF 抽取详情、配置预览和本地偏好等高级信息默认折叠。
+- The UI always prefers showing the main workflow first, and leaves expert-level details in consistent expanders.  
+  页面优先展示普通用户主流程，专业用户信息统一放入风格一致的折叠栏。
+
+## Bilingual Support / 双语支持
+
+### Current Behavior / 当前行为
+
+- The sidebar language switch writes the selected language to `configs/user_preferences.yaml`.  
+  左侧栏语言切换会写入 `configs/user_preferences.yaml`。
+- The selected language is restored after browser refresh and app restart.  
+  浏览器刷新和网页重启后会恢复上次语言。
+- The selected language affects:
+  - UI labels, buttons, help text, and expander titles
+  - home-page explanations and glossary
+  - prompt-builder instructions
+  - bridge-layer status and fallback messages
+  - launcher terminal messages
+  - default output language
+  - paper summary filename suffixes such as `-zh.md` and `-en.md`
+- 当前语言会影响：
+  - UI 文案、按钮、帮助文本与折叠栏标题
+  - 首页说明和参数解释
+  - prompt_builder 生成的任务说明
+  - bridge 层状态与回退消息
+  - launcher 终端提示
+  - 默认输出语言
+  - 论文精读文件后缀，例如 `-zh.md`、`-en.md`
+
+### Conservative Boundary / 保守边界
+
+- Historical result files are not auto-translated; they are shown in the language they were originally generated in.  
+  历史结果文件不会自动翻译，而是按生成时语言原样展示。
+- Old configs with Chinese enum values are normalized on load, but not force-rewritten in bulk.  
+  旧配置中的中文枚举值会在加载时自动归一化，但不会被批量强制回写。
+
+## PDF Extraction And Deep Reading / PDF 抽取与精读链路
+
+The current `paper-reader` pipeline is:
 
 ```text
-research-assistant/
-├── AGENTS.md
-├── LICENSE
-├── README.md
-├── requirements.txt
-├── configs/
-│   ├── automations/daily_top10.yaml
-│   ├── daily_profile.yaml
-│   ├── execution_profiles.yaml
-│   ├── interesting_papers.json
-│   ├── ranking_profiles.md
-│   └── source_policies.md
-├── outputs/
-│   ├── README.md
-│   ├── daily_top10/
-│   ├── paper_summaries/
-│   ├── topic_maps/
-│   ├── feasibility_reports/
-│   ├── constraint_reports/
-│   ├── pdfs/
-│   └── prompt_requests/
-├── skills/
-│   ├── constraint-aware-explorer/
-│   ├── idea-feasibility/
-│   ├── literature-scout/
-│   ├── paper-fetcher/
-│   ├── paper-reader/
-│   └── topic-mapper/
-└── ui/
-    ├── app.py
-    ├── launcher.py
-    ├── pages/
-    └── services/
+Reference / Local PDF
+  -> optional paper-fetcher download
+  -> local PDF text extraction and cleanup
+  -> outputs/pdf_text/<slug>-cleaned.txt
+  -> outputs/pdf_text/<slug>-cleaned.json
+  -> paper-reader structured deep read
 ```
 
-## 安装步骤
+当前 `paper-reader` 链路为：
 
-推荐环境：
+```text
+论文引用 / 本地 PDF
+  -> 如有需要，先走 paper-fetcher 下载
+  -> 本地 PDF 文本抽取与清洗
+  -> outputs/pdf_text/<slug>-cleaned.txt
+  -> outputs/pdf_text/<slug>-cleaned.json
+  -> paper-reader 结构化精读
+```
 
-- Python `3.10+`
-- 已安装并可执行的 `Codex CLI`
-- macOS / Linux / Windows 均可，以下命令以 Unix shell 为例
+Extraction quality levels:
 
-安装依赖：
+- `good`: body text is usable and is preferred as the reading source. / 正文可用，优先基于清洗文本做精读。
+- `mixed`: partial page loss exists; tables, formulas, and experiments must be treated cautiously. / 存在部分页面缺失，表格、公式和实验细节要谨慎处理。
+- `poor`: large parts of the body are missing; only conservative interpretation is allowed. / 正文缺失较多，只能保守解读。
+
+Hard constraints:
+
+- Do not fabricate tables, formulas, or experiment details.  
+  不允许伪造表格、公式或实验细节。
+- When evidence is insufficient, uncertainty must be stated explicitly.  
+  当证据不足时，必须明确标注不确定性。
+
+## Local Persistence / 本地持久化方案
+
+### User Preferences / 用户偏好
+
+- File: `configs/user_preferences.yaml`
+- Stores:
+  - UI language
+  - last-used field, time range, sources, ranking profile, constraints, and Top K
+  - per-page quality preferences
+  - paper-reader defaults such as summary depth and auto-fetch behavior
+  - topic-mapper / idea-feasibility / constraint-explorer defaults
+  - active automation task name and filename
+- Does not store:
+  - Codex login state
+  - API keys
+  - any credential material
+
+### Interesting Papers / 感兴趣论文
+
+- File: `configs/interesting_papers.json`
+- Purpose: store the papers marked by users from scan results, for later PDF download or deep reading.
+
+### Daily Profile / 每日巡检默认配置
+
+- File: `configs/daily_profile.yaml`
+- Purpose: store the current default profile used by scan-style tasks.
+
+## Automation Config Naming / 自动化配置命名
+
+- Directory: `configs/automations/`
+- Active index file: `configs/automations/index.yaml`
+- Naming rule:
+  - sanitize the user-provided task name
+  - append a stable short hash
+  - save as `<task-name>--<hash>.yaml`
+- Example:
+  - `每日一篇文献--4bb24c0f.yaml`
+- The page explicitly shows:
+  - task name
+  - generated filename
+  - save directory
+  - active config path
+
+## Requirements / 依赖
+
+The root `requirements.txt` delegates to `ui/requirements.txt`.
+
+根目录的 `requirements.txt` 通过 `-r ui/requirements.txt` 转发到 UI 依赖文件。
+
+Current required packages:
+
+- `streamlit>=1.40,<2`
+- `PyYAML>=6.0`
+- `pypdf>=5.0,<6`
+
+`pypdf` was added explicitly in `V0.1.0-2026.03.24` because the PDF extraction layer depends on it.
+
+`V0.1.0-2026.03.24` 已显式补充 `pypdf`，因为 PDF 文本抽取层依赖该库。
+
+## Quick Start / 快速启动
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
-```
-
-如果你不想创建虚拟环境，也可以直接执行最后两条 `pip` 命令。
-
-## Codex CLI 登录方式
-
-本项目默认不是“先配 API key 再跑网页”，而是“先确认本地 `Codex CLI` 已经能用 ChatGPT 登录，然后网页直接调用它”。
-
-推荐检查顺序：
-
-```bash
-codex --version
-codex login
-codex login status
-```
-
-建议优先使用 ChatGPT 登录。如果 `codex login status` 中能看到类似 `Logged in using ChatGPT` 的提示，就说明本项目默认路径已经就绪。
-
-关键说明：
-
-- 不需要先启动 `Codex app` 才能跑网页
-- 不需要让 `codex` 常驻后台
-- 不需要默认提供 `OPENAI_API_KEY`
-- 网页会在点击执行时按需调用 `codex exec`
-
-## 如何启动网页
-
-只要你已经完成过 `codex login`，并且 `codex login status` 正常，就可以直接在终端运行：
-
-```bash
 python ui/launcher.py
 ```
 
-这一步的含义是：
+Recommended preflight checks:
 
-- 不是“先登录一次网页，再运行命令”
-- 而是“确认本机的 `Codex CLI` 已登录后，直接运行网页启动命令”
+```bash
+codex --version
+codex login status
+```
 
-启动器会自动完成这些预检查：
+建议在启动前先确认以上两条命令可用。
 
-- 检查 `Codex CLI` 是否安装
-- 检查 `codex` 命令是否可执行
-- 检查当前是否已登录
-- 打开本地浏览器页面
+## Validation / 验证与推荐档位
 
-如果 `Codex CLI` 未安装或未登录，网页仍然可以打开，但研究类页面不会伪装执行成功，会明确提示当前只能保留 prompt request 或手动桥接。
+### Live-Verified Pages / 已真实打通页面
 
-## 如何使用主要页面
+- `Top 10 Literature Scan`
+- `Paper Deep Read`
+- `PDF Downloads` including `Download And Read`
+- `Topic Map`
+- `Idea Feasibility`
+- `Constraint Explorer`
 
-| 页面 | 用途 | 主要输入 | 主要输出 |
-| --- | --- | --- | --- |
-| 首页 | 查看本地状态、默认配置、最近产物 | 无 | 环境状态、配置摘要、最近结果 |
-| Top 10 文献巡检 | 按主题做结构化检索与排序 | 方向、时间窗、来源、排序 profile、约束、Top K | `outputs/daily_top10/` 下的 Markdown + JSON |
-| 单篇论文精读 | 深入理解一篇论文 | arXiv ID / DOI / URL / 本地 PDF、摘要深度 | `outputs/paper_summaries/` 下的 Markdown + JSON |
-| 方向论文地图 | 做主题梳理与阅读路线设计 | topic、时间窗、返回数量、是否跨领域 | `outputs/topic_maps/` 下的 Markdown + JSON |
-| 想法可行性分析 | 判断想法是否值得做 | idea、目标领域、算力/数据预算、风险偏好 | `outputs/feasibility_reports/` 下的 Markdown + JSON |
-| 资源受限探索 | 在真实约束下筛选更可做的方向 | 研究方向、算力限制、数据限制、是否偏复现 | `outputs/constraint_reports/` 下的 Markdown + JSON |
-| PDF 下载 | 把论文下载到本地，并可串联精读 | 论文链接 / arXiv ID / DOI、本地文件名 | `outputs/pdfs/` 下的 PDF 与来源 sidecar |
-| 自动化配置 | 保存每日巡检配置并生成 automation prompt | 任务名、研究领域、时间范围、来源、档位、调度时间 | `configs/daily_profile.yaml`、`configs/automations/daily_top10.yaml`、automation prompt |
+### Smoke Reports / Smoke 日志
 
-推荐最小体验路径：
+- Output directory: `outputs/smoke_tests/`
+- Script: `scripts/live_smoke_test.py`
+- Language options:
+  - `--language zh-CN`
+  - `--language en-US`
 
-1. 打开 `PDF 下载` 页面，输入一个 arXiv ID，确认 PDF 能落盘。
-2. 打开 `单篇论文精读` 页面，基于刚下载的论文做一次摘要。
-3. 打开 `Top 10 文献巡检` 页面，跑一次小范围主题巡检。
-4. 打开 `自动化配置` 页面，保存一份每日巡检配置并复制 prompt。
+### Cost Guidance / 成本建议
 
-## 自动化如何配置
+- `economy`: preferred for smoke tests, PDF download, lightweight reading, and initial validation.  
+  `economy`：优先用于 smoke test、PDF 下载、轻量精读和初步验证。
+- `balanced`: default for normal use when slightly stronger reasoning is needed.  
+  `balanced`：适合常规使用与一般强度分析。
+- Only move above `balanced` when lower-cost profiles cannot complete basic validation.  
+  只有在低成本档位无法完成最基本验证时，才建议继续升档。
 
-当前自动化页面的职责是：
+## Known Limits / 当前边界
 
-1. 写入 `configs/daily_profile.yaml`
-2. 写入 `configs/automations/daily_top10.yaml`
-3. 根据当前配置生成固定 automation prompt
-4. 让你把该 prompt 粘贴到 `Codex app` 的 Automation 创建界面
+- The project still depends on a locally installed and logged-in `Codex CLI`.  
+  项目仍依赖本地可执行且已登录的 `Codex CLI`。
+- The actual `model / reasoning effort` for `Codex app` Automations still needs to be set manually in the app.  
+  `Codex app Automation` 的实际 `model / reasoning effort` 仍需在 App 内手动设置。
+- PDF extraction quality depends on the source file layout; scanned or image-heavy PDFs can degrade badly.  
+  PDF 抽取质量受源文件版式影响，扫描版或图片页会明显变差。
+- Real outputs, PDFs, prompt requests, and smoke logs under `outputs/` are usually not meant for public commits.  
+  `outputs/` 中的真实结果、PDF、prompt request 和 smoke log 通常不适合直接提交到公开仓库。
+- Legacy `configs/automations/daily_top10.yaml` may remain in the repo, but it is no longer the default active config.  
+  历史遗留的 `configs/automations/daily_top10.yaml` 可能仍然存在，但不再作为默认活动配置。
 
-建议使用方式：
+## Directory Layout / 目录结构
 
-- 在网页的 `自动化配置` 页面设置每日巡检参数
-- 复制页面生成的 automation prompt
-- 在 `Codex app` 中新建 Automation
-- 将 prompt 粘贴进去
-- 根据网页推荐手动选择 `model` 和 `reasoning effort`
-
-当前自动化边界：
-
-- 网页会保存 `quality_profile`
-- 网页会给出推荐的 `model / reasoning effort`
-- 但 `Codex app Automation` 的实际 `model / reasoning effort` 仍需在 App 中手动选择，网页尚未完全接管这一步
-
-## 当前能力边界
-
-目前这个仓库已经适合公开展示和本地部署，但能力边界需要明确：
-
-- 默认依赖本地可执行的 `Codex CLI`；若未安装或未登录，研究页面不会真正执行
-- `Codex app Automation` 的 `model / reasoning effort` 仍需手动设置
-- 本地 PDF 的文本抽取质量受源文件质量影响，证据不足时应接受“不确定”结果
-- `outputs/` 是本地产物目录，不应默认提交运行结果、下载的 PDF 或 prompt request
-- `configs/daily_profile.yaml` 与 `configs/automations/daily_top10.yaml` 会被网页真实改写；公开提交前应确认里面没有个人研究方向、私有约束或敏感信息
+```text
+research-assistant/
+├── .streamlit/config.toml
+├── configs/
+│   ├── automations/
+│   │   ├── index.yaml
+│   │   ├── daily_top10.yaml
+│   │   └── <task-name>--<hash>.yaml
+│   ├── daily_profile.yaml
+│   ├── execution_profiles.yaml
+│   ├── interesting_papers.json
+│   ├── ranking_profiles.md
+│   ├── source_policies.md
+│   └── user_preferences.yaml
+├── outputs/
+│   ├── daily_top10/
+│   ├── paper_summaries/
+│   ├── topic_maps/
+│   ├── feasibility_reports/
+│   ├── constraint_reports/
+│   ├── pdfs/
+│   ├── pdf_text/
+│   ├── prompt_requests/
+│   └── smoke_tests/
+├── scripts/
+│   └── live_smoke_test.py
+├── ui/
+│   ├── app.py
+│   ├── launcher.py
+│   ├── pages/
+│   ├── requirements.txt
+│   └── services/
+└── skills/
+```
 
 ## License
 
-仓库当前附带 `MIT License`，适合作为初始公开版本使用。如果你希望改成更严格或带专利条款的许可证，请在首次公开前替换。
+This repository currently ships with the `MIT License`.
+
+仓库当前附带 `MIT License`。

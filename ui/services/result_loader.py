@@ -40,7 +40,7 @@ def load_sidecar_json(result_path: Path) -> dict[str, Any]:
 
 def split_markdown_sections(text: str) -> list[tuple[str, str]]:
     sections: list[tuple[str, str]] = []
-    current_title = "概览"
+    current_title = "__overview__"
     current_lines: list[str] = []
     for line in text.splitlines():
         if line.startswith("## "):

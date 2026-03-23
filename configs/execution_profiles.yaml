@@ -33,9 +33,9 @@ task_defaults:
   automation: balanced
   literature_scout: balanced
   paper_reader: balanced
-  topic_mapper: high-accuracy
-  idea_feasibility: high-accuracy
-  constraint_explorer: high-accuracy
+  topic_mapper: balanced
+  idea_feasibility: balanced
+  constraint_explorer: balanced
 recommendations:
   daily_top10: 建议优先 balanced；若只做轻量巡检可改 economy。
   paper_reader: 常规精读建议 balanced；重要论文深读再切到 high-accuracy。

@@ -24,6 +24,11 @@ htmlcov/
 # Streamlit local secrets
 .streamlit/secrets.toml
 
+# Local preference state
+configs/user_preferences.yaml
+configs/automations/index.yaml
+configs/automations/*--*.yaml
+
 # Local runtime artifacts in outputs/
 outputs/daily_top10/*
 !outputs/daily_top10/.gitkeep
@@ -37,6 +42,10 @@ outputs/constraint_reports/*
 !outputs/constraint_reports/.gitkeep
 outputs/pdfs/*
 !outputs/pdfs/.gitkeep
+outputs/pdf_text/*
+!outputs/pdf_text/.gitkeep
+outputs/smoke_tests/*
+!outputs/smoke_tests/.gitkeep
 outputs/prompt_requests/*
 !outputs/prompt_requests/.gitkeep
 !outputs/prompt_requests/constraint_explorer/

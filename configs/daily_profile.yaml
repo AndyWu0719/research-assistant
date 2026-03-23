@@ -1,21 +1,22 @@
-field: multimodal large language models
+field: ASR / TTS / Unified speech modeling/representation / architecture / optimization /
+  evaluation
 time_range:
   mode: rolling
-  days: 7
-  label: 最近 7 天
+  days: 90
+  label: 最近 90 天
 sources:
-  - arXiv
-  - OpenReview
+- arXiv
+- OpenReview
 ranking_profile: balanced-default
 quality_profile: balanced
 constraints:
-  compute: ""
-  data: 优先公开数据、公开代码和可直接复用 benchmark
-  time: 优先选择过去 7 天内值得跟进的新论文
-  budget: ""
-  notes: 这是示例 daily profile，可在网页中改成你自己的研究方向。
+  compute: ''
+  data: ''
+  time: ''
+  budget: ''
+  notes: 对于低成本，高效，实验迭代快，计算资源需求少的论文优先，有代码仓库的优先，但要保证所选的论文的质量够硬，被接受会议或期刊的等级够高，或者作者的背景够强
 output:
   directory: outputs/daily_top10
   filename_template: YYYY-MM-DD-<field>-<ranking_profile>.md
 language: zh-CN
-top_k: 10
+top_k: 1

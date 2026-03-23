@@ -10,55 +10,91 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from ui.services.codex_bridge import PaperReaderInput, detect_codex_cli, run_paper_reader
-from ui.services.config_store import (
-    OUTPUTS_DIR,
-    QUALITY_PROFILE_OPTIONS,
-    default_quality_for_task,
-    ensure_project_layout,
-)
+from ui.services.config_store import OUTPUTS_DIR, QUALITY_PROFILE_OPTIONS, ensure_project_layout, load_user_preferences, update_user_preferences
 from ui.services.page_helpers import (
     format_quality_option,
     recall_prompt,
     remember_prompt,
+    render_app_sidebar,
     render_bridge_response,
-    render_codex_status,
+    render_codex_status_panel,
     render_named_sections,
-    show_path,
+    render_page_header,
+    render_path_expander,
+    render_pdf_extraction_status,
+    render_prompt_expander,
 )
 from ui.services.result_loader import list_recent_markdown, load_result
+from ui.services.ui_text import SUMMARY_DEPTH_OPTIONS, expander_title, summary_depth_label, t
 
 
 STATE_KEY = "paper_reader_last_execution"
+PAPER_READER_SECTION_KEYS = [
+    "one_sentence",
+    "paper_overview",
+    "background",
+    "goal",
+    "core_problem_and_method",
+    "core_method",
+    "key_experiments_and_conclusions",
+    "experiments",
+    "results",
+    "limitations",
+    "open_resources",
+    "diagram_plain",
+    "diagram_explanation",
+]
 
 ensure_project_layout()
-codex_status = detect_codex_cli()
+preferences = load_user_preferences()
+language = preferences["language"]
+task_defaults = preferences["task_defaults"]["paper_reader"]
+codex_status = detect_codex_cli(language=language)
 quality_options = list(QUALITY_PROFILE_OPTIONS)
-default_quality = default_quality_for_task("paper_reader")
+default_quality = task_defaults.get("quality_profile", "balanced")
 
-st.title("单篇论文精读")
-st.caption("支持链接 / arXiv ID / DOI / 本地 PDF。若需要先抓 PDF，会先走 `paper-fetcher`，再把本地 PDF 串给 `paper-reader`。")
-render_codex_status(codex_status)
+render_app_sidebar("paper_reader")
+render_page_header("paper_reader")
+render_codex_status_panel(codex_status, expanded=False)
 
 with st.form("paper_reader_form"):
     paper_reference = st.text_input(
-        "论文链接 / arXiv ID / DOI / 本地 PDF 路径",
-        placeholder="例如：2603.19765 或 /absolute/path/to/paper.pdf",
+        t("paper_reader.paper_reference", language),
+        placeholder=t("paper_reader.paper_reference_placeholder", language),
     )
-    summary_depth = st.selectbox("摘要深度", options=["标准", "深入", "超详细"], index=0)
+    summary_depth = st.selectbox(
+        t("paper_reader.summary_depth", language),
+        options=SUMMARY_DEPTH_OPTIONS,
+        index=SUMMARY_DEPTH_OPTIONS.index(task_defaults.get("summary_depth", "standard")),
+        format_func=lambda item: summary_depth_label(item, language),
+    )
     quality_profile = st.selectbox(
-        "执行质量档位",
+        t("common.quality_profile", language),
         options=quality_options,
         index=quality_options.index(default_quality),
         format_func=lambda item: format_quality_option(item, task_type="paper_reader"),
-        help="常规总结建议 balanced；重要论文深读再切到 high-accuracy。",
+        help=t("paper_reader.quality_help", language),
     )
-    diagram_summary = st.checkbox("需要图示化解释", value=True)
-    focus_experiments = st.checkbox("优先解释实验细节", value=True)
-    auto_fetch_pdf = st.checkbox("若输入不是本地 PDF，则先自动抓 PDF", value=True)
-    show_prompt = st.checkbox("展示本次执行 prompt", value=False)
-    submitted = st.form_submit_button("执行精读", use_container_width=True)
+    with st.expander(expander_title("advanced_options", language), expanded=False):
+        diagram_summary = st.checkbox(t("paper_reader.diagram_summary", language), value=bool(task_defaults.get("diagram_summary", True)))
+        focus_experiments = st.checkbox(t("paper_reader.focus_experiments", language), value=bool(task_defaults.get("focus_experiments", True)))
+        auto_fetch_pdf = st.checkbox(t("paper_reader.auto_fetch_pdf", language), value=bool(task_defaults.get("auto_fetch_pdf", True)))
+    submitted = st.form_submit_button(t("paper_reader.submit", language), use_container_width=True)
 
 if submitted:
+    update_user_preferences(
+        {
+            "task_defaults": {
+                "paper_reader": {
+                    "quality_profile": quality_profile,
+                    "summary_depth": summary_depth,
+                    "diagram_summary": diagram_summary,
+                    "focus_experiments": focus_experiments,
+                    "auto_fetch_pdf": auto_fetch_pdf,
+                }
+            }
+        }
+    )
     response = run_paper_reader(
         PaperReaderInput(
             paper_reference=paper_reference,
@@ -67,78 +103,51 @@ if submitted:
             focus_experiments=focus_experiments,
             auto_fetch_pdf=auto_fetch_pdf,
             quality_profile=quality_profile,
+            language=language,
         )
     )
     remember_prompt(
         STATE_KEY,
         {
             "response": response.to_dict(),
-            "show_prompt": show_prompt,
             "prompt": response.prompt_text,
         },
     )
 
 stored = recall_prompt(STATE_KEY)
 if stored:
-    st.subheader("本次执行状态")
+    st.subheader(t("common.status_heading", language))
     render_bridge_response(stored["response"])
     fetch_payload = (stored["response"].get("payload") or {}).get("fetch")
     if fetch_payload:
-        st.markdown("**PDF 获取链路**")
+        st.markdown(f"**{t('paper_reader.pdf_fetch_chain', language)}**")
         render_bridge_response(fetch_payload)
-    if stored.get("show_prompt") and stored.get("prompt"):
-        st.markdown("**本次执行 Prompt**")
-        st.code(stored["prompt"], language="markdown")
+    render_prompt_expander(stored.get("prompt"))
+    render_pdf_extraction_status(stored["response"].get("payload") or {})
     output_path = stored["response"].get("expected_output_path")
     if output_path and Path(output_path).exists():
-        st.markdown("**本次精读结果**")
-        render_named_sections(
-            load_result(Path(output_path)),
-            [
-                "一句话总结",
-                "论文速览",
-                "研究背景",
-                "目标",
-                "核心问题与方法",
-                "核心方法",
-                "关键实验与结论",
-                "实验细节",
-                "结果",
-                "局限性",
-                "开源资源",
-                "通俗图示",
-                "图示化解释",
-            ],
-        )
+        st.markdown(f"**{t('common.current_read_result', language)}**")
+        render_named_sections(load_result(Path(output_path)), PAPER_READER_SECTION_KEYS)
 
 st.divider()
-st.subheader("最近精读结果")
+st.subheader(t("paper_reader.recent_results_heading", language))
 recent_results = list_recent_markdown(OUTPUTS_DIR / "paper_summaries", limit=20)
 if not recent_results:
-    st.info("还没有 `outputs/paper_summaries/` 结果。")
+    st.info(t("paper_reader.no_results", language))
 else:
+    result_lookup = {path.name: path for path in recent_results}
     selected_result = st.selectbox(
-        "选择精读结果文件",
-        options=recent_results,
-        format_func=lambda path: path.name,
+        t("paper_reader.select_result_file", language),
+        options=list(result_lookup.keys()),
     )
-    loaded = load_result(selected_result)
-    show_path("结果文件路径", selected_result)
-    render_named_sections(
-        loaded,
-        [
-            "一句话总结",
-            "论文速览",
-            "研究背景",
-            "目标",
-            "核心问题与方法",
-            "核心方法",
-            "关键实验与结论",
-            "实验细节",
-            "结果",
-            "局限性",
-            "开源资源",
-            "通俗图示",
-            "图示化解释",
-        ],
+    selected_path = result_lookup[selected_result]
+    loaded = load_result(selected_path)
+    render_path_expander(
+        t("common.output_and_paths", language),
+        {
+            t("common.result_file", language): selected_path,
+            t("common.json_sidecar", language): selected_path.with_suffix(".json"),
+        },
     )
+    render_pdf_extraction_status(loaded.metadata)
+    render_named_sections(loaded, PAPER_READER_SECTION_KEYS)

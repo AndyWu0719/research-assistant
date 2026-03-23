@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+import hashlib
 import json
+import re
 from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+from ui.services.language import DEFAULT_LANGUAGE, normalize_language
+from ui.services.ui_text import normalize_risk_preference, normalize_summary_depth
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -18,13 +23,14 @@ UI_DIR = ROOT / "ui"
 
 DAILY_PROFILE_PATH = CONFIGS_DIR / "daily_profile.yaml"
 AUTOMATIONS_DIR = CONFIGS_DIR / "automations"
-AUTOMATION_CONFIG_PATH = AUTOMATIONS_DIR / "daily_top10.yaml"
+LEGACY_AUTOMATION_CONFIG_PATH = AUTOMATIONS_DIR / "daily_top10.yaml"
+AUTOMATION_CONFIG_PATH = LEGACY_AUTOMATION_CONFIG_PATH
+AUTOMATION_INDEX_PATH = AUTOMATIONS_DIR / "index.yaml"
 INTERESTING_PAPERS_PATH = CONFIGS_DIR / "interesting_papers.json"
 EXECUTION_PROFILES_PATH = CONFIGS_DIR / "execution_profiles.yaml"
 RANKING_PROFILES_PATH = CONFIGS_DIR / "ranking_profiles.md"
 SOURCE_POLICIES_PATH = CONFIGS_DIR / "source_policies.md"
-
-DEFAULT_LANGUAGE = "zh-CN"
+USER_PREFERENCES_PATH = CONFIGS_DIR / "user_preferences.yaml"
 DEFAULT_TOP_K = 10
 DEFAULT_RANKING_PROFILE = "balanced-default"
 DEFAULT_QUALITY_PROFILE = "balanced"
@@ -98,6 +104,7 @@ DEFAULT_AUTOMATION_CONFIG: dict[str, Any] = {
     "enabled": True,
     "auto_download_interesting": False,
     "generated_prompt_target": "Codex app Automations",
+    "language": DEFAULT_LANGUAGE,
 }
 
 DEFAULT_INTERESTING_PAPERS: dict[str, Any] = {
@@ -146,9 +153,9 @@ DEFAULT_EXECUTION_PROFILES: dict[str, Any] = {
         "automation": "balanced",
         "literature_scout": "balanced",
         "paper_reader": "balanced",
-        "topic_mapper": "high-accuracy",
-        "idea_feasibility": "high-accuracy",
-        "constraint_explorer": "high-accuracy",
+        "topic_mapper": "balanced",
+        "idea_feasibility": "balanced",
+        "constraint_explorer": "balanced",
     },
     "recommendations": {
         "daily_top10": "建议优先 balanced；若只做轻量巡检可改 economy。",
@@ -157,6 +164,94 @@ DEFAULT_EXECUTION_PROFILES: dict[str, Any] = {
         "automation": "每日自动化默认不要用 max-analysis，避免持续高成本运行。",
     },
 }
+
+DEFAULT_AUTOMATION_INDEX: dict[str, Any] = {
+    "active_config": None,
+    "updated_at": None,
+}
+
+DEFAULT_USER_PREFERENCES: dict[str, Any] = {
+    "version": 1,
+    "language": DEFAULT_LANGUAGE,
+    "global_defaults": {
+        "field": DEFAULT_DAILY_PROFILE["field"],
+        "time_range_key": "7d",
+        "sources": deepcopy(DEFAULT_SOURCES),
+        "ranking_profile": DEFAULT_RANKING_PROFILE,
+        "constraints": deepcopy(DEFAULT_DAILY_PROFILE["constraints"]),
+        "top_k": DEFAULT_TOP_K,
+    },
+    "task_defaults": {
+        "literature_scout": {
+            "quality_profile": "balanced",
+        },
+        "paper_reader": {
+            "quality_profile": "balanced",
+            "summary_depth": "standard",
+            "diagram_summary": True,
+            "focus_experiments": True,
+            "auto_fetch_pdf": True,
+        },
+        "topic_mapper": {
+            "quality_profile": "balanced",
+            "time_range_key": "30d",
+            "cross_domain": False,
+            "return_count": 15,
+            "ranking_mode": DEFAULT_RANKING_PROFILE,
+        },
+        "idea_feasibility": {
+            "quality_profile": "balanced",
+            "compute_budget": "单卡 24G",
+            "data_budget": "优先公开数据",
+            "risk_preference": "balanced",
+            "prefer_low_cost_validation": True,
+        },
+        "constraint_explorer": {
+            "quality_profile": "balanced",
+            "compute_limit": "单卡 24G",
+            "data_limit": "优先公开数据或可替代小规模数据",
+            "prefer_reproduction": True,
+            "prefer_open_source": True,
+        },
+        "pdf_fetcher": {
+            "save_dir": DEFAULT_PDF_DIR,
+            "auto_read": False,
+            "reader_quality_profile": "balanced",
+        },
+        "automation": {
+            "quality_profile": "balanced",
+            "run_time": "09:00",
+            "auto_download_interesting": False,
+        },
+    },
+    "active_automation": {
+        "task_name": DEFAULT_AUTOMATION_CONFIG["task_name"],
+        "filename": None,
+    },
+}
+
+
+def _sanitize_filename_fragment(value: str, max_length: int = 56) -> str:
+    lowered = (value or "").strip().lower()
+    lowered = re.sub(r"[^a-z0-9\u4e00-\u9fff._-]+", "-", lowered)
+    lowered = re.sub(r"-{2,}", "-", lowered).strip("-._")
+    if not lowered:
+        lowered = "automation-task"
+    return lowered[:max_length].rstrip("-._")
+
+
+def automation_config_filename_for_task(task_name: str) -> str:
+    cleaned = _sanitize_filename_fragment(task_name)
+    digest = hashlib.sha1((task_name or "").strip().encode("utf-8")).hexdigest()[:8]
+    return f"{cleaned}--{digest}.yaml"
+
+
+def automation_config_path_for_task(task_name: str) -> Path:
+    return AUTOMATIONS_DIR / automation_config_filename_for_task(task_name)
+
+
+def _default_automation_config_path() -> Path:
+    return automation_config_path_for_task(DEFAULT_AUTOMATION_CONFIG["task_name"])
 
 
 def ensure_project_layout() -> None:
@@ -169,6 +264,8 @@ def ensure_project_layout() -> None:
         OUTPUTS_DIR / "feasibility_reports",
         OUTPUTS_DIR / "constraint_reports",
         OUTPUTS_DIR / "pdfs",
+        OUTPUTS_DIR / "pdf_text",
+        OUTPUTS_DIR / "smoke_tests",
         OUTPUTS_DIR / "prompt_requests" / "literature_scout",
         OUTPUTS_DIR / "prompt_requests" / "paper_reader",
         OUTPUTS_DIR / "prompt_requests" / "topic_mapper",
@@ -180,12 +277,28 @@ def ensure_project_layout() -> None:
 
     if not DAILY_PROFILE_PATH.exists():
         save_yaml(DAILY_PROFILE_PATH, DEFAULT_DAILY_PROFILE)
-    if not AUTOMATION_CONFIG_PATH.exists():
-        save_yaml(AUTOMATION_CONFIG_PATH, DEFAULT_AUTOMATION_CONFIG)
     if not INTERESTING_PAPERS_PATH.exists():
         save_json(INTERESTING_PAPERS_PATH, DEFAULT_INTERESTING_PAPERS)
     if not EXECUTION_PROFILES_PATH.exists():
         save_yaml(EXECUTION_PROFILES_PATH, DEFAULT_EXECUTION_PROFILES)
+    if not USER_PREFERENCES_PATH.exists():
+        save_yaml(USER_PREFERENCES_PATH, DEFAULT_USER_PREFERENCES)
+
+    if not AUTOMATION_INDEX_PATH.exists():
+        active_path = LEGACY_AUTOMATION_CONFIG_PATH if LEGACY_AUTOMATION_CONFIG_PATH.exists() else _default_automation_config_path()
+        save_yaml(
+            AUTOMATION_INDEX_PATH,
+            {
+                "active_config": active_path.name,
+                "updated_at": now_iso(),
+            },
+        )
+
+    active_automation_path = current_automation_config_path()
+    if not active_automation_path.exists():
+        save_yaml(active_automation_path, DEFAULT_AUTOMATION_CONFIG)
+    if active_automation_path == LEGACY_AUTOMATION_CONFIG_PATH and LEGACY_AUTOMATION_CONFIG_PATH.exists():
+        migrate_legacy_automation_config_if_needed()
 
 
 def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
@@ -277,21 +390,86 @@ def save_daily_profile(profile: dict[str, Any]) -> None:
     payload = deep_merge(DEFAULT_DAILY_PROFILE, profile)
     payload["time_range"] = normalize_time_range(payload.get("time_range", "7d"))
     payload["quality_profile"] = normalize_quality_profile(payload.get("quality_profile"))
+    payload["language"] = normalize_language(payload.get("language"))
     save_yaml(DAILY_PROFILE_PATH, payload)
 
 
-def load_automation_config() -> dict[str, Any]:
-    config = load_yaml(AUTOMATION_CONFIG_PATH, DEFAULT_AUTOMATION_CONFIG)
+def load_automation_index() -> dict[str, Any]:
+    index = load_yaml(AUTOMATION_INDEX_PATH, DEFAULT_AUTOMATION_INDEX)
+    active_name = str(index.get("active_config") or "").strip()
+    if active_name:
+        index["active_config"] = Path(active_name).name
+    else:
+        index["active_config"] = None
+    index.setdefault("updated_at", None)
+    return index
+
+
+def save_automation_index(index: dict[str, Any]) -> None:
+    payload = deep_merge(DEFAULT_AUTOMATION_INDEX, index)
+    active_name = str(payload.get("active_config") or "").strip()
+    payload["active_config"] = Path(active_name).name if active_name else None
+    payload["updated_at"] = now_iso()
+    save_yaml(AUTOMATION_INDEX_PATH, payload)
+
+
+def current_automation_config_path() -> Path:
+    index = load_yaml(AUTOMATION_INDEX_PATH, DEFAULT_AUTOMATION_INDEX) if AUTOMATION_INDEX_PATH.exists() else DEFAULT_AUTOMATION_INDEX
+    active_name = str(index.get("active_config") or "").strip()
+    if active_name:
+        return AUTOMATIONS_DIR / Path(active_name).name
+    if LEGACY_AUTOMATION_CONFIG_PATH.exists():
+        return LEGACY_AUTOMATION_CONFIG_PATH
+    return _default_automation_config_path()
+
+
+def describe_automation_storage(task_name: str, path: Path | None = None) -> dict[str, str]:
+    target = path or automation_config_path_for_task(task_name)
+    return {
+        "directory": str(target.parent),
+        "filename": target.name,
+        "path": str(target),
+    }
+
+
+def migrate_legacy_automation_config_if_needed() -> Path:
+    if not LEGACY_AUTOMATION_CONFIG_PATH.exists():
+        return current_automation_config_path()
+
+    legacy_payload = load_yaml(LEGACY_AUTOMATION_CONFIG_PATH, DEFAULT_AUTOMATION_CONFIG)
+    target_path = automation_config_path_for_task(str(legacy_payload.get("task_name") or DEFAULT_AUTOMATION_CONFIG["task_name"]))
+    if target_path != LEGACY_AUTOMATION_CONFIG_PATH and not target_path.exists():
+        save_yaml(target_path, legacy_payload)
+
+    save_automation_index({"active_config": target_path.name})
+    if USER_PREFERENCES_PATH.exists():
+        preferences = load_yaml(USER_PREFERENCES_PATH, DEFAULT_USER_PREFERENCES)
+        preferences["active_automation"] = {
+            "task_name": legacy_payload.get("task_name", DEFAULT_AUTOMATION_CONFIG["task_name"]),
+            "filename": target_path.name,
+        }
+        save_user_preferences(preferences)
+    return target_path
+
+
+def load_automation_config(path: Path | None = None) -> dict[str, Any]:
+    config_path = path or current_automation_config_path()
+    config = load_yaml(config_path, DEFAULT_AUTOMATION_CONFIG)
     config["time_range"] = normalize_time_range(config.get("time_range", "7d"))
     config["quality_profile"] = normalize_quality_profile(config.get("quality_profile"))
+    config["language"] = normalize_language(config.get("language"))
     return config
 
 
-def save_automation_config(config: dict[str, Any]) -> None:
+def save_automation_config(config: dict[str, Any], path: Path | None = None) -> Path:
     payload = deep_merge(DEFAULT_AUTOMATION_CONFIG, config)
     payload["time_range"] = normalize_time_range(payload.get("time_range", "7d"))
     payload["quality_profile"] = normalize_quality_profile(payload.get("quality_profile"))
-    save_yaml(AUTOMATION_CONFIG_PATH, payload)
+    payload["language"] = normalize_language(payload.get("language"))
+    target_path = path or automation_config_path_for_task(str(payload.get("task_name") or DEFAULT_AUTOMATION_CONFIG["task_name"]))
+    save_yaml(target_path, payload)
+    save_automation_index({"active_config": target_path.name})
+    return target_path
 
 
 def load_execution_profiles() -> dict[str, Any]:
@@ -326,6 +504,63 @@ def resolve_quality_profile(value: str | None, task_type: str | None = None) -> 
     profile = deepcopy(execution_profiles["profiles"][normalized])
     profile["name"] = normalized
     return profile
+
+
+def load_user_preferences() -> dict[str, Any]:
+    payload = load_yaml(USER_PREFERENCES_PATH, DEFAULT_USER_PREFERENCES)
+    payload = deep_merge(DEFAULT_USER_PREFERENCES, payload)
+    payload["language"] = normalize_language(payload.get("language"))
+    global_defaults = payload.setdefault("global_defaults", {})
+    global_defaults.setdefault("field", DEFAULT_DAILY_PROFILE["field"])
+    global_defaults.setdefault("time_range_key", "7d")
+    global_defaults.setdefault("sources", deepcopy(DEFAULT_SOURCES))
+    global_defaults.setdefault("ranking_profile", DEFAULT_RANKING_PROFILE)
+    global_defaults.setdefault("constraints", deepcopy(DEFAULT_DAILY_PROFILE["constraints"]))
+    global_defaults.setdefault("top_k", DEFAULT_TOP_K)
+    task_defaults = payload.setdefault("task_defaults", {})
+    for task_name, task_default in DEFAULT_USER_PREFERENCES["task_defaults"].items():
+        task_defaults[task_name] = deep_merge(task_default, task_defaults.get(task_name, {}))
+        if "quality_profile" in task_defaults[task_name]:
+            task_defaults[task_name]["quality_profile"] = normalize_quality_profile(
+                task_defaults[task_name].get("quality_profile"),
+                task_type=task_name if task_name != "automation" else "automation",
+            )
+    task_defaults["paper_reader"]["summary_depth"] = normalize_summary_depth(task_defaults["paper_reader"].get("summary_depth"))
+    task_defaults["idea_feasibility"]["risk_preference"] = normalize_risk_preference(
+        task_defaults["idea_feasibility"].get("risk_preference")
+    )
+    active_automation = payload.setdefault("active_automation", {})
+    current_path = current_automation_config_path()
+    current_config = load_yaml(current_path, DEFAULT_AUTOMATION_CONFIG)
+    active_automation["task_name"] = current_config.get("task_name", active_automation.get("task_name") or DEFAULT_AUTOMATION_CONFIG["task_name"])
+    active_automation["filename"] = current_path.name
+    return payload
+
+
+def save_user_preferences(preferences: dict[str, Any]) -> None:
+    payload = deep_merge(DEFAULT_USER_PREFERENCES, preferences)
+    payload["language"] = normalize_language(payload.get("language"))
+    global_defaults = payload.setdefault("global_defaults", {})
+    global_defaults.setdefault("constraints", deepcopy(DEFAULT_DAILY_PROFILE["constraints"]))
+    task_defaults = payload.setdefault("task_defaults", {})
+    for task_name, task_default in DEFAULT_USER_PREFERENCES["task_defaults"].items():
+        task_defaults[task_name] = deep_merge(task_default, task_defaults.get(task_name, {}))
+        if "quality_profile" in task_defaults[task_name]:
+            task_defaults[task_name]["quality_profile"] = normalize_quality_profile(
+                task_defaults[task_name].get("quality_profile"),
+                task_type=task_name if task_name != "automation" else "automation",
+            )
+    task_defaults["paper_reader"]["summary_depth"] = normalize_summary_depth(task_defaults["paper_reader"].get("summary_depth"))
+    task_defaults["idea_feasibility"]["risk_preference"] = normalize_risk_preference(
+        task_defaults["idea_feasibility"].get("risk_preference")
+    )
+    save_yaml(USER_PREFERENCES_PATH, payload)
+
+
+def update_user_preferences(updates: dict[str, Any]) -> dict[str, Any]:
+    payload = deep_merge(load_user_preferences(), updates)
+    save_user_preferences(payload)
+    return load_user_preferences()
 
 
 def load_interesting_papers() -> dict[str, Any]:
