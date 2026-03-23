@@ -1,0 +1,43 @@
+profiles:
+  economy:
+    label: economy
+    description: 最低成本档，适合检索、整理、下载、轻量总结。
+    model: gpt-5.4-mini
+    reasoning_effort: low
+    web_execution_control: exact-cli-override
+    automation_control: recommended-only
+  balanced:
+    label: balanced
+    description: 默认平衡档，适合常规 Top10 巡检和常规论文总结。
+    model: gpt-5.4
+    reasoning_effort: medium
+    web_execution_control: exact-cli-override
+    automation_control: recommended-only
+  high-accuracy:
+    label: high-accuracy
+    description: 高精度档，适合跨论文综合、方向地图与可行性分析。
+    model: gpt-5.4
+    reasoning_effort: high
+    web_execution_control: exact-cli-override
+    automation_control: recommended-only
+  max-analysis:
+    label: max-analysis
+    description: 最高分析档，仅在明确要求时使用。
+    model: gpt-5.4
+    reasoning_effort: xhigh
+    web_execution_control: exact-cli-override
+    automation_control: recommended-only
+task_defaults:
+  paper_fetcher: economy
+  prompt_builder: economy
+  automation: balanced
+  literature_scout: balanced
+  paper_reader: balanced
+  topic_mapper: high-accuracy
+  idea_feasibility: high-accuracy
+  constraint_explorer: high-accuracy
+recommendations:
+  daily_top10: 建议优先 balanced；若只做轻量巡检可改 economy。
+  paper_reader: 常规精读建议 balanced；重要论文深读再切到 high-accuracy。
+  deep_reports: 跨论文综合、方向地图、可行性分析优先 high-accuracy。
+  automation: 每日自动化默认不要用 max-analysis，避免持续高成本运行。

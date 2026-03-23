@@ -1,0 +1,21 @@
+field: multimodal large language models
+time_range:
+  mode: rolling
+  days: 7
+  label: 最近 7 天
+sources:
+  - arXiv
+  - OpenReview
+ranking_profile: balanced-default
+quality_profile: balanced
+constraints:
+  compute: ""
+  data: 优先公开数据、公开代码和可直接复用 benchmark
+  time: 优先选择过去 7 天内值得跟进的新论文
+  budget: ""
+  notes: 这是示例 daily profile，可在网页中改成你自己的研究方向。
+output:
+  directory: outputs/daily_top10
+  filename_template: YYYY-MM-DD-<field>-<ranking_profile>.md
+language: zh-CN
+top_k: 10

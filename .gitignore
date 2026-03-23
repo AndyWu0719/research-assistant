@@ -1,0 +1,56 @@
+# macOS / editors
+.DS_Store
+.idea/
+.vscode/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.python-version
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Environment files
+.env
+.env.*
+
+# Streamlit local secrets
+.streamlit/secrets.toml
+
+# Local runtime artifacts in outputs/
+outputs/daily_top10/*
+!outputs/daily_top10/.gitkeep
+outputs/paper_summaries/*
+!outputs/paper_summaries/.gitkeep
+outputs/topic_maps/*
+!outputs/topic_maps/.gitkeep
+outputs/feasibility_reports/*
+!outputs/feasibility_reports/.gitkeep
+outputs/constraint_reports/*
+!outputs/constraint_reports/.gitkeep
+outputs/pdfs/*
+!outputs/pdfs/.gitkeep
+outputs/prompt_requests/*
+!outputs/prompt_requests/.gitkeep
+!outputs/prompt_requests/constraint_explorer/
+!outputs/prompt_requests/idea_feasibility/
+!outputs/prompt_requests/literature_scout/
+!outputs/prompt_requests/paper_reader/
+!outputs/prompt_requests/topic_mapper/
+outputs/prompt_requests/constraint_explorer/*
+!outputs/prompt_requests/constraint_explorer/.gitkeep
+outputs/prompt_requests/idea_feasibility/*
+!outputs/prompt_requests/idea_feasibility/.gitkeep
+outputs/prompt_requests/literature_scout/*
+!outputs/prompt_requests/literature_scout/.gitkeep
+outputs/prompt_requests/paper_reader/*
+!outputs/prompt_requests/paper_reader/.gitkeep
+outputs/prompt_requests/topic_mapper/*
+!outputs/prompt_requests/topic_mapper/.gitkeep

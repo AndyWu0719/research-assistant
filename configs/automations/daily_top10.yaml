@@ -1,0 +1,25 @@
+task_name: 每日 Top10 文献巡检
+field: multimodal large language models
+time_range:
+  mode: rolling
+  days: 7
+  label: 最近 7 天
+sources:
+  - arXiv
+  - OpenReview
+ranking_profile: balanced-default
+quality_profile: balanced
+constraints:
+  compute: ""
+  data: 优先公开数据、公开代码和可直接复用 benchmark
+  time: 优先选择过去 7 天内值得跟进的新论文
+  budget: ""
+  notes: 这是示例自动化配置，可在网页中改成你自己的研究方向。
+top_k: 10
+schedule:
+  timezone: Asia/Hong_Kong
+  time_of_day: "09:00"
+  cadence: daily
+enabled: true
+auto_download_interesting: false
+generated_prompt_target: Codex app Automations
