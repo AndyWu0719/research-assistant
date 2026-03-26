@@ -2399,6 +2399,8 @@ class ResearchAssistantWindow(QMainWindow):
         self.version_badge = QLabel()
         self.version_badge.setObjectName("VersionBadge")
         self.version_badge.setText(version_label(current_version()))
+        self.version_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.version_badge.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         topbar_layout.addWidget(self.version_badge)
 
         self.check_updates_button = set_secondary(QPushButton(ui_text("检查更新", "Check Updates", self.language)))
@@ -2952,3 +2954,12 @@ class ResearchAssistantWindow(QMainWindow):
             }
             """
         )
+        self._sync_topbar_control_heights()
+
+    def _sync_topbar_control_heights(self) -> None:
+        if not hasattr(self, "version_badge") or not hasattr(self, "check_updates_button"):
+            return
+        target_height = self.check_updates_button.sizeHint().height()
+        if target_height <= 0:
+            return
+        self.version_badge.setFixedHeight(target_height)
