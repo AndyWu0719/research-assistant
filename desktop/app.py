@@ -2396,10 +2396,11 @@ class ResearchAssistantWindow(QMainWindow):
         self.language_combo.currentIndexChanged.connect(self.change_language)
         topbar_layout.addWidget(create_topbar_field(t("sidebar.language", self.language), self.language_combo, min_width=128))
 
-        self.version_badge = QLabel()
+        self.version_badge = QPushButton()
         self.version_badge.setObjectName("VersionBadge")
         self.version_badge.setText(version_label(current_version()))
-        self.version_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.version_badge.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.version_badge.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self.version_badge.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         topbar_layout.addWidget(self.version_badge)
 
@@ -2762,11 +2763,12 @@ class ResearchAssistantWindow(QMainWindow):
             QLabel#TopBarSubtitle {
                 color: #58665c;
             }
-            QLabel#VersionBadge {
+            QPushButton#VersionBadge {
                 background: #17392d;
                 color: #fff8ec;
                 border-radius: 11px;
-                padding: 8px 12px;
+                border: none;
+                padding: 9px 12px;
                 font-size: 12px;
                 font-weight: 700;
             }
