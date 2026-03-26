@@ -16,7 +16,7 @@ constraints:
   budget: ''
   notes: 对于低成本，高效，实验迭代快，计算资源需求少的论文优先，有代码仓库的优先，但要保证所选的论文的质量够硬，被接受会议或期刊的等级够高，或者作者的背景够强
 output:
-  directory: outputs/daily_top10
+  directory: outputs/literature_scans
   filename_template: YYYY-MM-DD-<field>-<ranking_profile>.md
 language: zh-CN
 top_k: 1

@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from ui.services.language import normalize_language
+from research_assistant.language import normalize_language
 
 
 NAV_ITEMS = [
     ("home", "app.py"),
-    ("top10", "pages/top10.py"),
+    ("literature_scout", "pages/literature_scout.py"),
     ("paper_reader", "pages/paper_reader.py"),
     ("topic_mapper", "pages/topic_mapper.py"),
     ("idea_feasibility", "pages/idea_feasibility.py"),
@@ -21,16 +21,16 @@ PAGE_COPY = {
         "nav_label": {"zh-CN": "首页", "en-US": "Home"},
         "title": {"zh-CN": "本地研究助手", "en-US": "Research Assistant"},
         "caption": {
-            "zh-CN": "网页负责参数配置与结果展示，本地 Codex CLI 负责真实执行，Automations 继续由 Codex app 承担。",
-            "en-US": "The web app handles inputs and result review, while the local Codex CLI executes the real research tasks. Automations still run through the Codex app.",
+            "zh-CN": "桌面应用负责参数配置、执行与结果查看，本地 Codex CLI 负责真实研究任务；周期任务默认由本地调度器承担。",
+            "en-US": "The desktop app handles inputs, execution, and result review, while the local Codex CLI runs the real research tasks. Recurring runs default to the local scheduler.",
         },
     },
-    "top10": {
-        "nav_label": {"zh-CN": "Top 10 文献巡检", "en-US": "Top 10 Literature Scan"},
-        "title": {"zh-CN": "Top 10 文献巡检", "en-US": "Top 10 Literature Scan"},
+    "literature_scout": {
+        "nav_label": {"zh-CN": "文献巡检", "en-US": "Literature Scan"},
+        "title": {"zh-CN": "文献巡检", "en-US": "Literature Scan"},
         "caption": {
-            "zh-CN": "按研究主题、时间范围和排序偏好做一次真实文献巡检，并把结果写回 `outputs/daily_top10/`。",
-            "en-US": "Run a real literature scan for a research topic, time window, and ranking profile, then write the result to `outputs/daily_top10/`.",
+            "zh-CN": "按研究主题、时间范围和排序偏好做一次真实文献巡检，并把结果写回 `outputs/literature_scans/`。",
+            "en-US": "Run a real literature scan for a research topic, time window, and ranking profile, then write the result to `outputs/literature_scans/`.",
         },
     },
     "paper_reader": {
@@ -77,8 +77,8 @@ PAGE_COPY = {
         "nav_label": {"zh-CN": "自动化配置", "en-US": "Automation Setup"},
         "title": {"zh-CN": "自动化配置", "en-US": "Automation Setup"},
         "caption": {
-            "zh-CN": "保存每日巡检配置、动态生成 automation 配置文件名，并生成可粘贴到 Codex app 的 automation prompt。",
-            "en-US": "Save the daily scan settings, generate a stable automation config filename, and build an automation prompt for the Codex app.",
+            "zh-CN": "保存每日巡检配置、生成稳定的 automation 配置文件名，并管理本地调度器使用的自动化参数。",
+            "en-US": "Save the daily scan settings, generate a stable automation config filename, and manage automation parameters for the local scheduler.",
         },
     },
 }
@@ -119,7 +119,7 @@ HOME_PARAMETER_GLOSSARY = {
 
 HOME_FEATURE_OVERVIEW = {
     "zh-CN": [
-        ("Top 10 文献巡检", "适合每天或每周快速收敛值得跟进的新论文。"),
+        ("文献巡检", "适合每天或每周快速收敛值得跟进的新论文。"),
         ("单篇论文精读", "适合理解一篇具体论文的方法、实验、局限和复现门槛。"),
         ("研究方向地图", "适合在进入一个新方向前先搭好阅读地图。"),
         ("研究想法可行性", "适合在动手前先判断一个想法值不值得做。"),
@@ -128,7 +128,7 @@ HOME_FEATURE_OVERVIEW = {
         ("自动化配置", "适合把固定巡检任务做成重复运行的 automation。"),
     ],
     "en-US": [
-        ("Top 10 Literature Scan", "Best for quickly narrowing down papers worth following on a daily or weekly basis."),
+        ("Literature Scan", "Best for quickly narrowing down papers worth following on a daily or weekly basis."),
         ("Paper Deep Read", "Best for understanding one specific paper, including its method, experiments, limitations, and reproduction cost."),
         ("Topic Map", "Best for building a reading map before entering a new research direction."),
         ("Idea Feasibility", "Best for checking whether an idea is worth pursuing before implementation."),
@@ -295,9 +295,9 @@ TEXT = {
         "home": {
             "project_heading": "项目是什么",
             "project_points": [
-                "这是一个本地研究工作台：网页负责表单、状态和结果回读，本地 `Codex CLI` 负责真实执行研究任务。",
+                "这是一个本地研究工作台：桌面应用负责表单、状态和结果回读，本地 `Codex CLI` 负责真实执行研究任务。",
                 "`paper-fetcher` 继续使用本地脚本真实下载 PDF；`下载并精读` 会在进入 `paper-reader` 之前先做 PDF 文本抽取与清洗。",
-                "`Automations` 页面负责生成可追踪的本地配置文件和 automation prompt，但 Codex app automation 的实际 model / reasoning 仍需你在 App 里手动选择。",
+                "`Automation Setup` 页面会生成可追踪的本地配置文件；本地调度器可直接执行每日任务，并默认按历史输出做去重。",
             ],
             "feature_heading": "功能概览",
             "recommended_paths_heading": "推荐使用路径",
@@ -310,30 +310,30 @@ TEXT = {
             "automation_pdf_heading": "自动化与 PDF 精读说明",
             "automation_pdf_points": [
                 "`下载并精读`：先真实下载 PDF，再生成清洗文本和抽取质量 sidecar，最后才进入 `paper-reader`。",
-                "`Automation Setup`：保存当前每日巡检任务的配置文件，并显示任务名称、生成文件名和保存目录。",
+                "`Automation Setup`：保存当前每日巡检任务配置，并显示本地调度器与手动触发命令。",
                 "低成本验证建议：先用 `economy` 跑 smoke 或轻量探索；只有某条链路在低档位无法完成基本验证时，再升到 `balanced`。",
             ],
             "environment_heading": "本地执行环境",
             "capability_heading": "能力状态",
             "recent_outputs_heading": "最近产物",
-            "top10_card": "Top10 榜单",
+            "scan_card": "文献巡检",
             "summary_card": "论文精读",
             "map_card": "方向地图",
             "feasibility_card": "可行性报告",
-            "no_top10": "还没有 Top10 结果。",
+            "no_scan": "还没有文献巡检结果。",
             "no_summary": "还没有精读结果。",
             "no_map": "还没有方向地图结果。",
             "no_feasibility": "还没有可行性报告。",
             "paths_heading": "路径与本地记忆",
         },
-        "top10": {
+        "literature_scout": {
             "quality_help": "普通巡检建议先用 balanced；只做 smoke 或非常轻量的试跑时可用 economy。",
             "constraints_placeholder": "例如：单卡 24G、优先公开代码、两周内能启动。",
-            "save_as_daily": "同步保存为 daily profile",
+            "save_as_daily": "同步保存为默认巡检配置",
             "submit": "执行巡检",
-            "daily_saved": "已更新 `configs/daily_profile.yaml`。",
+            "daily_saved": "已更新 `configs/scan_defaults.yaml`。",
             "recent_results_heading": "最近结果",
-            "no_results": "还没有 `outputs/daily_top10/` 结果文件。",
+            "no_results": "还没有 `outputs/literature_scans/` 结果文件。",
             "top_k_list": "Top K 列表",
             "mark_interesting": "标记感兴趣",
             "interesting_saved": "已写入 `configs/interesting_papers.json`。",
@@ -428,11 +428,11 @@ TEXT = {
             "saved": "配置已写入。",
             "summary_heading": "当前配置摘要",
             "quality_heading": "质量档位建议",
-            "important_note": "重要说明：这里的档位会写入配置并体现在 automation prompt 中，但 Codex app automation 的实际 model / reasoning 需要你在创建 automation 时手动设置。",
+            "important_note": "重要说明：这里的档位会写入本地自动化配置，并用于 `codex exec` 的推荐模型与推理强度。",
             "automation_prompt": "Automation Prompt",
-            "daily_profile_preview": "`configs/daily_profile.yaml`",
+            "daily_profile_preview": "`configs/scan_defaults.yaml`",
             "config_preview_heading": "配置预览",
-            "daily_top10_recommendation": "每日巡检建议",
+            "daily_scan_recommendation": "每日巡检建议",
             "paper_reader_recommendation": "论文精读建议",
             "deep_reports_recommendation": "深度分析建议",
             "automation_recommendation": "自动化建议",
@@ -507,9 +507,9 @@ TEXT = {
         "home": {
             "project_heading": "What This Project Is",
             "project_points": [
-                "This is a local research workstation: the web app handles forms, status, and result review, while the local `Codex CLI` performs the real execution.",
+                "This is a local research workstation: the desktop app handles forms, status, and result review, while the local `Codex CLI` performs the real execution.",
                 "`paper-fetcher` still downloads PDFs through the local script. `Download And Read` runs PDF text extraction and cleanup before entering `paper-reader`.",
-                "The `Automation Setup` page generates trackable local config files and automation prompts, but the actual model and reasoning settings for Codex app automations still need to be selected in the app.",
+                "The `Automation Setup` page writes trackable local config files. The local scheduler can execute recurring runs directly and deduplicate against previous daily outputs.",
             ],
             "feature_heading": "Feature Overview",
             "recommended_paths_heading": "Recommended Paths",
@@ -522,30 +522,30 @@ TEXT = {
             "automation_pdf_heading": "Automation And PDF Deep Read Notes",
             "automation_pdf_points": [
                 "`Download And Read`: first downloads the PDF, then writes cleaned text and an extraction-quality sidecar, and only then enters `paper-reader`.",
-                "`Automation Setup`: saves the current daily scan task, and shows the task name, generated filename, and storage directory.",
+                "`Automation Setup`: saves the current daily scan task, and shows local scheduler commands for recurring runs.",
                 "For low-cost validation, start with `economy` for smoke tests or light exploration. Only move up to `balanced` when the lower level cannot complete basic verification.",
             ],
             "environment_heading": "Local Execution Environment",
             "capability_heading": "Capability Status",
             "recent_outputs_heading": "Recent Outputs",
-            "top10_card": "Top 10 Lists",
+            "scan_card": "Literature Scans",
             "summary_card": "Paper Reads",
             "map_card": "Topic Maps",
             "feasibility_card": "Feasibility Reports",
-            "no_top10": "No Top 10 results yet.",
+            "no_scan": "No literature scan results yet.",
             "no_summary": "No paper reading results yet.",
             "no_map": "No topic map results yet.",
             "no_feasibility": "No feasibility reports yet.",
             "paths_heading": "Paths And Local Memory",
         },
-        "top10": {
+        "literature_scout": {
             "quality_help": "For routine scans, start with balanced. Use economy for smoke tests or very lightweight trial runs.",
             "constraints_placeholder": "For example: single 24 GB GPU, prefer open code, and something the team can start within two weeks.",
-            "save_as_daily": "Also Save As Daily Profile",
+            "save_as_daily": "Also Save As Scan Defaults",
             "submit": "Run Scan",
-            "daily_saved": "Updated `configs/daily_profile.yaml`.",
+            "daily_saved": "Updated `configs/scan_defaults.yaml`.",
             "recent_results_heading": "Recent Results",
-            "no_results": "No files found in `outputs/daily_top10/` yet.",
+            "no_results": "No files found in `outputs/literature_scans/` yet.",
             "top_k_list": "Top K Results",
             "mark_interesting": "Mark Interesting",
             "interesting_saved": "Saved to `configs/interesting_papers.json`.",
@@ -640,11 +640,11 @@ TEXT = {
             "saved": "Configuration written successfully.",
             "summary_heading": "Current Configuration Summary",
             "quality_heading": "Quality Recommendations",
-            "important_note": "Important: the quality profile is written into the config and reflected in the automation prompt, but the actual model and reasoning settings for a Codex app automation still need to be chosen when you create it.",
+            "important_note": "Important: the quality profile is written into the local automation config and used as the recommended model and reasoning settings for `codex exec`.",
             "automation_prompt": "Automation Prompt",
-            "daily_profile_preview": "`configs/daily_profile.yaml`",
+            "daily_profile_preview": "`configs/scan_defaults.yaml`",
             "config_preview_heading": "Config Preview",
-            "daily_top10_recommendation": "Daily Top 10",
+            "daily_scan_recommendation": "Daily Scan",
             "paper_reader_recommendation": "Paper Reader",
             "deep_reports_recommendation": "Deep Reports",
             "automation_recommendation": "Automation",

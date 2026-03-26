@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import contextlib
+import importlib.util
+import io
 import json
 import shutil
 import subprocess
@@ -11,12 +14,12 @@ from typing import Any
 
 import yaml
 
-from ui.services.config_store import OUTPUTS_DIR, ROOT, ensure_project_layout, load_user_preferences, now_iso, resolve_quality_profile
-from ui.services.file_naming import prompt_request_path
-from ui.services.language import normalize_language
-from ui.services.pdf_extractor import extract_pdf_text
-from ui.services.paper_sources import parse_reference
-from ui.services.prompt_builder import (
+from research_assistant.config_store import OUTPUTS_DIR, ROOT, ensure_project_layout, load_user_preferences, now_iso, resolve_quality_profile
+from research_assistant.file_naming import prompt_request_path
+from research_assistant.language import normalize_language
+from research_assistant.pdf_extractor import extract_pdf_text
+from research_assistant.paper_sources import parse_reference
+from research_assistant.prompt_builder import (
     PromptPackage,
     build_constraint_explorer_prompt,
     build_idea_feasibility_prompt,
@@ -24,7 +27,7 @@ from ui.services.prompt_builder import (
     build_paper_reader_prompt,
     build_topic_mapper_prompt,
 )
-from ui.services.ui_text import is_english
+from research_assistant.ui_text import is_english
 
 
 PAPER_FETCHER_SCRIPT = ROOT / "skills" / "paper-fetcher" / "scripts" / "download_paper.py"
@@ -53,13 +56,14 @@ CODEX_EXEC_RESULT_SCHEMA: dict[str, Any] = {
 }
 TASK_LABELS = {
     "paper_fetcher": {"zh-CN": "PDF 下载", "en-US": "PDF Download"},
-    "literature_scout": {"zh-CN": "Top10 文献巡检", "en-US": "Top 10 Literature Scan"},
+    "literature_scout": {"zh-CN": "文献巡检", "en-US": "Literature Scan"},
     "paper_reader": {"zh-CN": "单篇论文精读", "en-US": "Paper Deep Read"},
     "topic_mapper": {"zh-CN": "方向论文地图", "en-US": "Topic Map"},
     "idea_feasibility": {"zh-CN": "想法可行性分析", "en-US": "Idea Feasibility"},
     "constraint_explorer": {"zh-CN": "资源受限探索", "en-US": "Constraint Explorer"},
 }
 _CODEX_STATUS_CACHE: dict[str, CodexCLIStatus] = {}
+_PAPER_FETCHER_MODULE: Any | None = None
 
 
 @dataclass(slots=True)
@@ -130,6 +134,8 @@ class LiteratureScoutInput:
     top_k: int
     quality_profile: str | None = None
     language: str | None = None
+    history_exclusion_path: str | None = None
+    history_exclusion_count: int = 0
 
 
 @dataclass(slots=True)
@@ -245,12 +251,72 @@ def _quality_selection(task_type: str, requested: str | None) -> QualityProfileS
     )
 
 
+def _load_paper_fetcher_module() -> Any:
+    global _PAPER_FETCHER_MODULE
+    if _PAPER_FETCHER_MODULE is not None:
+        return _PAPER_FETCHER_MODULE
+    if not PAPER_FETCHER_SCRIPT.exists():
+        raise FileNotFoundError(f"Paper fetcher script not found: {PAPER_FETCHER_SCRIPT}")
+    spec = importlib.util.spec_from_file_location("research_assistant_paper_fetcher", PAPER_FETCHER_SCRIPT)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Failed to load paper fetcher module: {PAPER_FETCHER_SCRIPT}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    _PAPER_FETCHER_MODULE = module
+    return module
+
+
+def _resolve_codex_executable() -> str | None:
+    executable = shutil.which("codex")
+    if executable:
+        return executable
+
+    candidates = [
+        Path("/opt/homebrew/bin/codex"),
+        Path("/usr/local/bin/codex"),
+        Path.home() / ".local/bin/codex",
+        Path.home() / ".npm-global/bin/codex",
+        Path.home() / ".nvm/versions/node/current/bin/codex",
+    ]
+    for candidate in candidates:
+        if candidate.exists() and candidate.is_file():
+            return str(candidate)
+    return None
+
+
+def _invoke_paper_fetch(task_input: PaperFetcherInput, target_dir: str) -> dict[str, Any]:
+    module = _load_paper_fetcher_module()
+    argv = [
+        task_input.reference,
+        "--output-dir",
+        target_dir,
+        "--json",
+    ]
+    if task_input.filename:
+        argv.extend(["--filename", task_input.filename])
+    if task_input.force:
+        argv.append("--force")
+    if task_input.resolve_only:
+        argv.append("--resolve-only")
+
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+        returncode = int(module.main(argv))
+    return {
+        "returncode": returncode,
+        "stdout": stdout.getvalue().strip(),
+        "stderr": stderr.getvalue().strip(),
+    }
+
+
 def detect_codex_cli(refresh: bool = False, language: str | None = None) -> CodexCLIStatus:
     lang = _resolve_language(language)
     if lang in _CODEX_STATUS_CACHE and not refresh:
         return _CODEX_STATUS_CACHE[lang]
 
-    executable = shutil.which("codex")
+    executable = _resolve_codex_executable()
     if not executable:
         _CODEX_STATUS_CACHE[lang] = CodexCLIStatus(
             available=False,
@@ -278,7 +344,7 @@ def detect_codex_cli(refresh: bool = False, language: str | None = None) -> Code
     ]
     try:
         version_process = subprocess.run(
-            ["codex", "--version"],
+            [executable, "--version"],
             cwd=ROOT,
             capture_output=True,
             text=True,
@@ -296,7 +362,7 @@ def detect_codex_cli(refresh: bool = False, language: str | None = None) -> Code
     login_mode = None
     try:
         login_process = subprocess.run(
-            ["codex", "login", "status"],
+            [executable, "login", "status"],
             cwd=ROOT,
             capture_output=True,
             text=True,
@@ -304,14 +370,14 @@ def detect_codex_cli(refresh: bool = False, language: str | None = None) -> Code
         )
         output = (login_process.stdout or login_process.stderr).strip()
         lowered = output.lower()
-        if login_process.returncode == 0 and "logged in" in lowered:
+        if login_process.returncode == 0 and "logged out" not in lowered and "not logged in" not in lowered:
             login_ok = True
             if "chatgpt" in lowered:
                 login_mode = "ChatGPT"
             elif "api key" in lowered:
                 login_mode = "API Key"
             else:
-                login_mode = "Unknown"
+                login_mode = output or "Unknown"
         else:
             issues.append(output or ("`codex login status` returned an unexpected response." if is_english(lang) else "`codex login status` 返回异常。"))
     except OSError as exc:
@@ -373,18 +439,18 @@ def capability_matrix(language: str | None = None) -> list[dict[str, str]]:
             "label": "In-App Research Execution" if is_english(lang) else "网页内研究执行",
             "status": "Ready" if is_english(lang) else "已打通",
             "description": (
-                "Top 10, deep read, topic map, feasibility, and constraint exploration all use the local Codex CLI first, and report real failure reasons when they fail."
+                "Literature scans, deep reads, topic maps, feasibility analysis, and constraint exploration all use the local Codex CLI first, and report real failure reasons when they fail."
                 if is_english(lang)
-                else "Top10 / 精读 / 方向地图 / 可行性 / 资源探索现在优先走本地 Codex CLI，失败时会明确返回真实原因。"
+                else "文献巡检 / 精读 / 方向地图 / 可行性 / 资源探索现在优先走本地 Codex CLI，失败时会明确返回真实原因。"
             ),
         },
         {
             "label": "Automation Configuration" if is_english(lang) else "自动化配置",
             "status": "Ready" if is_english(lang) else "已打通",
             "description": (
-                "The web app writes the daily profile and automation YAML, and recommends a quality profile. The actual model and reasoning settings for Codex app automations still need to be chosen manually."
+                "The web app writes the daily profile and automation YAML. The local scheduler can execute recurring runs directly through Codex CLI, with history-based deduplication."
                 if is_english(lang)
-                else "网页会写 daily profile 与 automation YAML，并给出质量档位推荐；Codex app automation 的模型与 reasoning 仍需手动选择。"
+                else "网页会写 daily profile 与 automation YAML；本地调度器可直接通过 Codex CLI 做周期执行，并带历史去重。"
             ),
         },
     ]
@@ -608,13 +674,13 @@ def _augment_manifest(manifest_path: Path | None, updates: dict[str, Any]) -> di
     return payload
 
 
-def _invoke_codex_exec(prompt: str, quality: QualityProfileSelection) -> dict[str, Any]:
+def _invoke_codex_exec(prompt: str, quality: QualityProfileSelection, executable: str) -> dict[str, Any]:
     with tempfile.TemporaryDirectory(prefix="research-assistant-codex-") as temp_dir:
         schema_path = Path(temp_dir) / "result-schema.json"
         last_message_path = Path(temp_dir) / "last-message.json"
         _save_json(schema_path, CODEX_EXEC_RESULT_SCHEMA)
         command = [
-            "codex",
+            executable,
             "exec",
             "-m",
             quality.model,
@@ -716,7 +782,7 @@ def _run_codex_task(
     language = _resolve_language(package.metadata.get("language"))
     quality = _quality_selection(task_type, requested_quality)
     wrapped_package = _wrap_prompt_package(package, task_type, input_summary, quality)
-    codex_status = detect_codex_cli(language=language)
+    codex_status = detect_codex_cli(refresh=True, language=language)
     if not codex_status.can_execute:
         return _bridge_unavailable_response(task_type, wrapped_package, input_summary, quality, codex_status)
 
@@ -729,7 +795,7 @@ def _run_codex_task(
             else "网页已触发本地 Codex CLI 执行。该 prompt 请求文件保留用于审计与手动回放。"
         ),
     )
-    result = _invoke_codex_exec(wrapped_package.prompt, quality)
+    result = _invoke_codex_exec(wrapped_package.prompt, quality, codex_status.executable or "codex")
     final_json = result.get("final_json") or {}
     manifest_existing = _load_json(wrapped_package.manifest_output) if wrapped_package.manifest_output else {}
 
@@ -809,6 +875,8 @@ def run_literature_scout(task_input: LiteratureScoutInput) -> BridgeResponse:
             "constraints": task_input.constraints,
             "top_k": task_input.top_k,
             "language": task_input.language,
+            "history_exclusion_path": task_input.history_exclusion_path,
+            "history_exclusion_count": task_input.history_exclusion_count,
         },
         requested_quality=task_input.quality_profile,
     )
@@ -1011,33 +1079,17 @@ def run_paper_fetch(task_input: PaperFetcherInput) -> BridgeResponse:
     language = _resolve_language(task_input.language)
     quality = _quality_selection("paper_fetcher", task_input.quality_profile)
     target_dir = str(task_input.output_dir or (OUTPUTS_DIR / "pdfs"))
-    command = [
-        sys.executable,
-        str(PAPER_FETCHER_SCRIPT),
-        task_input.reference,
-        "--output-dir",
-        target_dir,
-        "--json",
-    ]
-    if task_input.filename:
-        command.extend(["--filename", task_input.filename])
-    if task_input.force:
-        command.append("--force")
-    if task_input.resolve_only:
-        command.append("--resolve-only")
-
-    process = subprocess.run(
-        command,
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    payload = _parse_process_output(process)
-    raw_message = payload.get("message") or payload.get("error") or process.stderr.strip()
+    process = _invoke_paper_fetch(task_input, target_dir)
+    payload = {}
+    if process["stdout"]:
+        try:
+            payload = json.loads(process["stdout"])
+        except json.JSONDecodeError:
+            payload = {"raw_stdout": process["stdout"]}
+    raw_message = payload.get("message") or payload.get("error") or process["stderr"].strip()
     source_record = payload.get("source_record")
 
-    if process.returncode != 0:
+    if process["returncode"] != 0:
         return BridgeResponse(
             task_type="paper_fetcher",
             status="error",
@@ -1048,8 +1100,8 @@ def run_paper_fetch(task_input: PaperFetcherInput) -> BridgeResponse:
             reasoning_effort=None,
             control_level="local-script",
             output_paths={},
-            error=payload.get("error") or process.stderr.strip() or raw_message or ("Download failed." if is_english(language) else "下载失败。"),
-            payload={**(payload or {"stderr": process.stderr.strip()}), "raw_message": raw_message},
+            error=payload.get("error") or process["stderr"].strip() or raw_message or ("Download failed." if is_english(language) else "下载失败。"),
+            payload={**(payload or {"stderr": process["stderr"].strip()}), "raw_message": raw_message},
         )
 
     if source_record:

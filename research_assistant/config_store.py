@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 from copy import deepcopy
 from datetime import datetime
@@ -10,27 +11,36 @@ from typing import Any
 
 import yaml
 
-from ui.services.language import DEFAULT_LANGUAGE, normalize_language
-from ui.services.ui_text import normalize_risk_preference, normalize_summary_depth
+from research_assistant.language import DEFAULT_LANGUAGE, normalize_language
+from research_assistant.ui_text import normalize_risk_preference, normalize_summary_depth
 
 
-ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT_ENV = "RESEARCH_ASSISTANT_PROJECT_ROOT"
+ROOT = Path(os.environ.get(PROJECT_ROOT_ENV, Path(__file__).resolve().parents[1])).expanduser().resolve()
 AGENTS_PATH = ROOT / "AGENTS.md"
 SKILLS_DIR = ROOT / "skills"
 CONFIGS_DIR = ROOT / "configs"
 OUTPUTS_DIR = ROOT / "outputs"
-UI_DIR = ROOT / "ui"
+LITERATURE_SCAN_OUTPUT_DIR = OUTPUTS_DIR / "literature_scans"
+LEGACY_LITERATURE_SCAN_OUTPUT_DIR = OUTPUTS_DIR / "daily_top10"
+LITERATURE_SCAN_RESULT_DIRS = (
+    LITERATURE_SCAN_OUTPUT_DIR,
+    LEGACY_LITERATURE_SCAN_OUTPUT_DIR,
+)
 
-DAILY_PROFILE_PATH = CONFIGS_DIR / "daily_profile.yaml"
+SCAN_DEFAULTS_PATH = CONFIGS_DIR / "scan_defaults.yaml"
+LEGACY_DAILY_PROFILE_PATH = CONFIGS_DIR / "daily_profile.yaml"
 AUTOMATIONS_DIR = CONFIGS_DIR / "automations"
 LEGACY_AUTOMATION_CONFIG_PATH = AUTOMATIONS_DIR / "daily_top10.yaml"
-AUTOMATION_CONFIG_PATH = LEGACY_AUTOMATION_CONFIG_PATH
 AUTOMATION_INDEX_PATH = AUTOMATIONS_DIR / "index.yaml"
+AUTOMATION_HISTORY_DIR = AUTOMATIONS_DIR / "history"
+AUTOMATION_RUNTIME_STATE_PATH = AUTOMATIONS_DIR / "runtime_state.json"
 INTERESTING_PAPERS_PATH = CONFIGS_DIR / "interesting_papers.json"
 EXECUTION_PROFILES_PATH = CONFIGS_DIR / "execution_profiles.yaml"
 RANKING_PROFILES_PATH = CONFIGS_DIR / "ranking_profiles.md"
 SOURCE_POLICIES_PATH = CONFIGS_DIR / "source_policies.md"
 USER_PREFERENCES_PATH = CONFIGS_DIR / "user_preferences.yaml"
+APP_UPDATE_CONFIG_PATH = CONFIGS_DIR / "app_update.yaml"
 DEFAULT_TOP_K = 10
 DEFAULT_RANKING_PROFILE = "balanced-default"
 DEFAULT_QUALITY_PROFILE = "balanced"
@@ -66,7 +76,7 @@ TIME_RANGE_OPTIONS = {
     "1y": {"mode": "rolling", "days": 365, "label": "最近 1 年"},
 }
 
-DEFAULT_DAILY_PROFILE: dict[str, Any] = {
+DEFAULT_SCAN_DEFAULTS: dict[str, Any] = {
     "field": "multimodal large language models",
     "time_range": {"mode": "rolling", "days": 7, "label": "最近 7 天"},
     "sources": deepcopy(DEFAULT_SOURCES),
@@ -80,21 +90,22 @@ DEFAULT_DAILY_PROFILE: dict[str, Any] = {
         "notes": "作为示例配置，可在网页中改成你自己的研究方向。",
     },
     "output": {
-        "directory": "outputs/daily_top10",
+        "directory": "outputs/literature_scans",
         "filename_template": "YYYY-MM-DD-<field>-<ranking_profile>.md",
     },
     "language": DEFAULT_LANGUAGE,
     "top_k": DEFAULT_TOP_K,
 }
+DEFAULT_DAILY_PROFILE = DEFAULT_SCAN_DEFAULTS
 
 DEFAULT_AUTOMATION_CONFIG: dict[str, Any] = {
-    "task_name": "每日 Top10 文献巡检",
-    "field": DEFAULT_DAILY_PROFILE["field"],
-    "time_range": DEFAULT_DAILY_PROFILE["time_range"],
-    "sources": deepcopy(DEFAULT_DAILY_PROFILE["sources"]),
-    "ranking_profile": DEFAULT_DAILY_PROFILE["ranking_profile"],
+    "task_name": "每日文献巡检",
+    "field": DEFAULT_SCAN_DEFAULTS["field"],
+    "time_range": DEFAULT_SCAN_DEFAULTS["time_range"],
+    "sources": deepcopy(DEFAULT_SCAN_DEFAULTS["sources"]),
+    "ranking_profile": DEFAULT_SCAN_DEFAULTS["ranking_profile"],
     "quality_profile": DEFAULT_QUALITY_PROFILE,
-    "constraints": deepcopy(DEFAULT_DAILY_PROFILE["constraints"]),
+    "constraints": deepcopy(DEFAULT_SCAN_DEFAULTS["constraints"]),
     "top_k": DEFAULT_TOP_K,
     "schedule": {
         "timezone": "Asia/Hong_Kong",
@@ -103,7 +114,10 @@ DEFAULT_AUTOMATION_CONFIG: dict[str, Any] = {
     },
     "enabled": True,
     "auto_download_interesting": False,
-    "generated_prompt_target": "Codex app Automations",
+    "runner": "local-scheduler",
+    "exclude_previous_output_papers": True,
+    "history_scope": "same-field",
+    "generated_prompt_target": "Local Scheduler + Codex CLI",
     "language": DEFAULT_LANGUAGE,
 }
 
@@ -124,7 +138,7 @@ DEFAULT_EXECUTION_PROFILES: dict[str, Any] = {
         },
         "balanced": {
             "label": "balanced",
-            "description": "默认平衡档，适合常规 Top10 巡检和常规论文总结。",
+            "description": "默认平衡档，适合常规文献巡检和常规论文总结。",
             "model": "gpt-5.4",
             "reasoning_effort": "medium",
             "web_execution_control": "exact-cli-override",
@@ -158,7 +172,7 @@ DEFAULT_EXECUTION_PROFILES: dict[str, Any] = {
         "constraint_explorer": "balanced",
     },
     "recommendations": {
-        "daily_top10": "建议优先 balanced；若只做轻量巡检可改 economy。",
+        "daily_scan": "建议优先 balanced；若只做轻量巡检可改 economy。",
         "paper_reader": "常规精读建议 balanced；重要论文深读再切到 high-accuracy。",
         "deep_reports": "跨论文综合、方向地图、可行性分析优先 high-accuracy。",
         "automation": "每日自动化默认不要用 max-analysis，避免持续高成本运行。",
@@ -170,15 +184,24 @@ DEFAULT_AUTOMATION_INDEX: dict[str, Any] = {
     "updated_at": None,
 }
 
+DEFAULT_AUTOMATION_RUNTIME_STATE: dict[str, Any] = {
+    "daemon": {
+        "pid": None,
+        "started_at": None,
+        "heartbeat_at": None,
+    },
+    "configs": {},
+}
+
 DEFAULT_USER_PREFERENCES: dict[str, Any] = {
     "version": 1,
     "language": DEFAULT_LANGUAGE,
     "global_defaults": {
-        "field": DEFAULT_DAILY_PROFILE["field"],
+        "field": DEFAULT_SCAN_DEFAULTS["field"],
         "time_range_key": "7d",
         "sources": deepcopy(DEFAULT_SOURCES),
         "ranking_profile": DEFAULT_RANKING_PROFILE,
-        "constraints": deepcopy(DEFAULT_DAILY_PROFILE["constraints"]),
+        "constraints": deepcopy(DEFAULT_SCAN_DEFAULTS["constraints"]),
         "top_k": DEFAULT_TOP_K,
     },
     "task_defaults": {
@@ -230,6 +253,19 @@ DEFAULT_USER_PREFERENCES: dict[str, Any] = {
     },
 }
 
+DEFAULT_APP_UPDATE_CONFIG: dict[str, Any] = {
+    "provider": "github_release",
+    "github_repo": "AndyWu0719/research-assistant",
+    "github_asset_pattern": "ResearchAssistant-macos-*.pkg",
+    "github_token_env": "",
+    "manifest_url": "",
+    "channel": "stable",
+    "check_on_launch": True,
+    "check_interval_hours": 24,
+    "download_in_app": True,
+    "open_download_in_browser": False,
+}
+
 
 def _sanitize_filename_fragment(value: str, max_length: int = 56) -> str:
     lowered = (value or "").strip().lower()
@@ -258,7 +294,8 @@ def ensure_project_layout() -> None:
     directories = [
         CONFIGS_DIR,
         AUTOMATIONS_DIR,
-        OUTPUTS_DIR / "daily_top10",
+        AUTOMATION_HISTORY_DIR,
+        LITERATURE_SCAN_OUTPUT_DIR,
         OUTPUTS_DIR / "paper_summaries",
         OUTPUTS_DIR / "topic_maps",
         OUTPUTS_DIR / "feasibility_reports",
@@ -275,14 +312,20 @@ def ensure_project_layout() -> None:
     for directory in directories:
         directory.mkdir(parents=True, exist_ok=True)
 
-    if not DAILY_PROFILE_PATH.exists():
-        save_yaml(DAILY_PROFILE_PATH, DEFAULT_DAILY_PROFILE)
+    if not SCAN_DEFAULTS_PATH.exists():
+        if LEGACY_DAILY_PROFILE_PATH.exists():
+            save_yaml(SCAN_DEFAULTS_PATH, load_yaml(LEGACY_DAILY_PROFILE_PATH, DEFAULT_SCAN_DEFAULTS))
+            LEGACY_DAILY_PROFILE_PATH.unlink(missing_ok=True)
+        else:
+            save_yaml(SCAN_DEFAULTS_PATH, DEFAULT_SCAN_DEFAULTS)
     if not INTERESTING_PAPERS_PATH.exists():
         save_json(INTERESTING_PAPERS_PATH, DEFAULT_INTERESTING_PAPERS)
     if not EXECUTION_PROFILES_PATH.exists():
         save_yaml(EXECUTION_PROFILES_PATH, DEFAULT_EXECUTION_PROFILES)
     if not USER_PREFERENCES_PATH.exists():
         save_yaml(USER_PREFERENCES_PATH, DEFAULT_USER_PREFERENCES)
+    if not APP_UPDATE_CONFIG_PATH.exists():
+        save_yaml(APP_UPDATE_CONFIG_PATH, DEFAULT_APP_UPDATE_CONFIG)
 
     if not AUTOMATION_INDEX_PATH.exists():
         active_path = LEGACY_AUTOMATION_CONFIG_PATH if LEGACY_AUTOMATION_CONFIG_PATH.exists() else _default_automation_config_path()
@@ -293,6 +336,8 @@ def ensure_project_layout() -> None:
                 "updated_at": now_iso(),
             },
         )
+    if not AUTOMATION_RUNTIME_STATE_PATH.exists():
+        save_json(AUTOMATION_RUNTIME_STATE_PATH, DEFAULT_AUTOMATION_RUNTIME_STATE)
 
     active_automation_path = current_automation_config_path()
     if not active_automation_path.exists():
@@ -375,23 +420,41 @@ def time_range_key(value: str | dict[str, Any]) -> str:
     return "7d"
 
 
-def load_daily_profile() -> dict[str, Any]:
-    profile = load_yaml(DAILY_PROFILE_PATH, DEFAULT_DAILY_PROFILE)
+def load_scan_defaults() -> dict[str, Any]:
+    profile_path = SCAN_DEFAULTS_PATH if SCAN_DEFAULTS_PATH.exists() else LEGACY_DAILY_PROFILE_PATH
+    profile = load_yaml(profile_path, DEFAULT_SCAN_DEFAULTS)
     profile["time_range"] = normalize_time_range(profile.get("time_range", "7d"))
     profile.setdefault("sources", deepcopy(DEFAULT_SOURCES))
     profile.setdefault("ranking_profile", DEFAULT_RANKING_PROFILE)
     profile["quality_profile"] = normalize_quality_profile(profile.get("quality_profile"))
     profile.setdefault("language", DEFAULT_LANGUAGE)
     profile.setdefault("top_k", DEFAULT_TOP_K)
+    output = profile.setdefault("output", deepcopy(DEFAULT_SCAN_DEFAULTS["output"]))
+    if str(output.get("directory") or "").strip() == "outputs/daily_top10":
+        output["directory"] = DEFAULT_SCAN_DEFAULTS["output"]["directory"]
+    output.setdefault("filename_template", DEFAULT_SCAN_DEFAULTS["output"]["filename_template"])
     return profile
 
 
-def save_daily_profile(profile: dict[str, Any]) -> None:
-    payload = deep_merge(DEFAULT_DAILY_PROFILE, profile)
+def save_scan_defaults(profile: dict[str, Any]) -> None:
+    payload = deep_merge(DEFAULT_SCAN_DEFAULTS, profile)
     payload["time_range"] = normalize_time_range(payload.get("time_range", "7d"))
     payload["quality_profile"] = normalize_quality_profile(payload.get("quality_profile"))
     payload["language"] = normalize_language(payload.get("language"))
-    save_yaml(DAILY_PROFILE_PATH, payload)
+    output = payload.setdefault("output", deepcopy(DEFAULT_SCAN_DEFAULTS["output"]))
+    if str(output.get("directory") or "").strip() == "outputs/daily_top10":
+        output["directory"] = DEFAULT_SCAN_DEFAULTS["output"]["directory"]
+    output.setdefault("filename_template", DEFAULT_SCAN_DEFAULTS["output"]["filename_template"])
+    save_yaml(SCAN_DEFAULTS_PATH, payload)
+    LEGACY_DAILY_PROFILE_PATH.unlink(missing_ok=True)
+
+
+def load_daily_profile() -> dict[str, Any]:
+    return load_scan_defaults()
+
+
+def save_daily_profile(profile: dict[str, Any]) -> None:
+    save_scan_defaults(profile)
 
 
 def load_automation_index() -> dict[str, Any]:
@@ -411,6 +474,23 @@ def save_automation_index(index: dict[str, Any]) -> None:
     payload["active_config"] = Path(active_name).name if active_name else None
     payload["updated_at"] = now_iso()
     save_yaml(AUTOMATION_INDEX_PATH, payload)
+
+
+def automation_history_path(path: Path | None = None) -> Path:
+    config_path = path or current_automation_config_path()
+    return AUTOMATION_HISTORY_DIR / f"{config_path.stem}.history.json"
+
+
+def load_automation_runtime_state() -> dict[str, Any]:
+    payload = load_json(AUTOMATION_RUNTIME_STATE_PATH, DEFAULT_AUTOMATION_RUNTIME_STATE)
+    if not isinstance(payload, dict):
+        return deepcopy(DEFAULT_AUTOMATION_RUNTIME_STATE)
+    return deep_merge(DEFAULT_AUTOMATION_RUNTIME_STATE, payload)
+
+
+def save_automation_runtime_state(state: dict[str, Any]) -> None:
+    payload = deep_merge(DEFAULT_AUTOMATION_RUNTIME_STATE, state)
+    save_json(AUTOMATION_RUNTIME_STATE_PATH, payload)
 
 
 def current_automation_config_path() -> Path:
@@ -458,6 +538,9 @@ def load_automation_config(path: Path | None = None) -> dict[str, Any]:
     config["time_range"] = normalize_time_range(config.get("time_range", "7d"))
     config["quality_profile"] = normalize_quality_profile(config.get("quality_profile"))
     config["language"] = normalize_language(config.get("language"))
+    config.setdefault("runner", DEFAULT_AUTOMATION_CONFIG["runner"])
+    config.setdefault("exclude_previous_output_papers", DEFAULT_AUTOMATION_CONFIG["exclude_previous_output_papers"])
+    config.setdefault("history_scope", DEFAULT_AUTOMATION_CONFIG["history_scope"])
     return config
 
 
@@ -472,6 +555,23 @@ def save_automation_config(config: dict[str, Any], path: Path | None = None) -> 
     return target_path
 
 
+def list_automation_config_paths(enabled_only: bool = False) -> list[Path]:
+    ensure_project_layout()
+    paths = sorted(
+        path
+        for path in AUTOMATIONS_DIR.glob("*.yaml")
+        if path.is_file() and path.name != AUTOMATION_INDEX_PATH.name
+    )
+    if not enabled_only:
+        return paths
+    enabled_paths: list[Path] = []
+    for path in paths:
+        config = load_automation_config(path)
+        if config.get("enabled", True):
+            enabled_paths.append(path)
+    return enabled_paths
+
+
 def load_execution_profiles() -> dict[str, Any]:
     payload = load_yaml(EXECUTION_PROFILES_PATH, DEFAULT_EXECUTION_PROFILES)
     payload = deep_merge(DEFAULT_EXECUTION_PROFILES, payload)
@@ -479,6 +579,9 @@ def load_execution_profiles() -> dict[str, Any]:
     for name in QUALITY_PROFILE_OPTIONS:
         profiles.setdefault(name, deepcopy(DEFAULT_EXECUTION_PROFILES["profiles"][name]))
     payload.setdefault("task_defaults", deepcopy(DEFAULT_EXECUTION_PROFILES["task_defaults"]))
+    recommendations = payload.setdefault("recommendations", {})
+    if "daily_scan" not in recommendations and "daily_top10" in recommendations:
+        recommendations["daily_scan"] = recommendations["daily_top10"]
     return payload
 
 
@@ -561,6 +664,22 @@ def update_user_preferences(updates: dict[str, Any]) -> dict[str, Any]:
     payload = deep_merge(load_user_preferences(), updates)
     save_user_preferences(payload)
     return load_user_preferences()
+
+
+def load_app_update_config() -> dict[str, Any]:
+    payload = load_yaml(APP_UPDATE_CONFIG_PATH, DEFAULT_APP_UPDATE_CONFIG)
+    payload = deep_merge(DEFAULT_APP_UPDATE_CONFIG, payload)
+    payload["provider"] = str(payload.get("provider") or "github_release").strip() or "github_release"
+    payload["github_repo"] = str(payload.get("github_repo") or "").strip().strip("/")
+    payload["github_asset_pattern"] = str(payload.get("github_asset_pattern") or "").strip() or "ResearchAssistant-macos-*.pkg"
+    payload["github_token_env"] = str(payload.get("github_token_env") or "").strip()
+    payload["manifest_url"] = str(payload.get("manifest_url") or "").strip()
+    payload["channel"] = str(payload.get("channel") or "stable").strip() or "stable"
+    payload["check_on_launch"] = bool(payload.get("check_on_launch", True))
+    payload["check_interval_hours"] = max(1, int(payload.get("check_interval_hours") or 24))
+    payload["download_in_app"] = bool(payload.get("download_in_app", True))
+    payload["open_download_in_browser"] = bool(payload.get("open_download_in_browser", False))
+    return payload
 
 
 def load_interesting_papers() -> dict[str, Any]:

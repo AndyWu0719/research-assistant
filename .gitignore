@@ -11,6 +11,7 @@ __pycache__/
 .venv/
 venv/
 env/
+dist/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
@@ -21,13 +22,13 @@ htmlcov/
 .env
 .env.*
 
-# Streamlit local secrets
-.streamlit/secrets.toml
-
 # Local preference state
 configs/user_preferences.yaml
 configs/automations/index.yaml
 configs/automations/*--*.yaml
+configs/automations/runtime_state.json
+configs/automations/history/*
+!configs/automations/history/.gitkeep
 
 # Local runtime artifacts in outputs/
 outputs/daily_top10/*
@@ -63,3 +64,7 @@ outputs/prompt_requests/paper_reader/*
 !outputs/prompt_requests/paper_reader/.gitkeep
 outputs/prompt_requests/topic_mapper/*
 !outputs/prompt_requests/topic_mapper/.gitkeep
+
+# Local signing / notarization secrets
+packaging/macos/signing.env
+packaging/macos/*.p8

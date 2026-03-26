@@ -5,8 +5,8 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-from ui.services.config_store import OUTPUTS_DIR
-from ui.services.language import language_suffix
+from research_assistant.config_store import LITERATURE_SCAN_OUTPUT_DIR, OUTPUTS_DIR
+from research_assistant.language import language_suffix
 
 
 def slugify(value: str, max_length: int = 64) -> str:
@@ -31,9 +31,9 @@ def sidecar_json_path(output_path: Path) -> Path:
     return output_path.with_suffix(".json")
 
 
-def top10_output_path(field: str, ranking_profile: str) -> Path:
+def literature_scan_output_path(field: str, ranking_profile: str) -> Path:
     filename = f"{today_str()}-{slugify(field)}-{slugify(ranking_profile)}.md"
-    return OUTPUTS_DIR / "daily_top10" / filename
+    return LITERATURE_SCAN_OUTPUT_DIR / filename
 
 
 def paper_summary_output_path(reference_slug: str) -> Path:
@@ -72,8 +72,8 @@ def pdf_text_output_path(reference_slug: str) -> Path:
     return OUTPUTS_DIR / "pdf_text" / filename
 
 
-def smoke_report_path() -> Path:
-    filename = f"{timestamp_str()}-live-smoke-test.json"
+def smoke_report_path(name: str = "desktop-smoke-test") -> Path:
+    filename = f"{timestamp_str()}-{slugify(name, max_length=48)}.json"
     return OUTPUTS_DIR / "smoke_tests" / filename
 
 

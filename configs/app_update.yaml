@@ -1,0 +1,10 @@
+provider: github_release
+github_repo: AndyWu0719/research-assistant
+github_asset_pattern: ResearchAssistant-macos-*.pkg
+github_token_env: ""
+manifest_url: ""
+channel: stable
+check_on_launch: true
+check_interval_hours: 24
+download_in_app: true
+open_download_in_browser: false

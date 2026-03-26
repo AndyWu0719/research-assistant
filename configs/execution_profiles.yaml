@@ -8,7 +8,7 @@ profiles:
     automation_control: recommended-only
   balanced:
     label: balanced
-    description: 默认平衡档，适合常规 Top10 巡检和常规论文总结。
+    description: 默认平衡档，适合常规文献巡检和常规论文总结。
     model: gpt-5.4
     reasoning_effort: medium
     web_execution_control: exact-cli-override
@@ -37,7 +37,7 @@ task_defaults:
   idea_feasibility: balanced
   constraint_explorer: balanced
 recommendations:
-  daily_top10: 建议优先 balanced；若只做轻量巡检可改 economy。
+  daily_scan: 建议优先 balanced；若只做轻量巡检可改 economy。
   paper_reader: 常规精读建议 balanced；重要论文深读再切到 high-accuracy。
   deep_reports: 跨论文综合、方向地图、可行性分析优先 high-accuracy。
   automation: 每日自动化默认不要用 max-analysis，避免持续高成本运行。

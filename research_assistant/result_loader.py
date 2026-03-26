@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ui.services.paper_sources import choose_code_url, choose_paper_url
+from research_assistant.paper_sources import choose_code_url, choose_paper_url
 
 
 TABLE_SEPARATOR_RE = re.compile(r"^\|?(?:\s*:?-+:?\s*\|)+\s*$")
@@ -21,10 +21,21 @@ class LoadedResult:
     table_rows: list[dict[str, str]]
 
 
-def list_recent_markdown(directory: Path, limit: int = 10) -> list[Path]:
-    if not directory.exists():
-        return []
-    files = [path for path in directory.glob("*.md") if path.is_file()]
+def list_recent_markdown(directory: Path | list[Path] | tuple[Path, ...], limit: int = 10) -> list[Path]:
+    directories = [directory] if isinstance(directory, Path) else list(directory)
+    files: list[Path] = []
+    seen: set[Path] = set()
+    for current in directories:
+        if not current.exists():
+            continue
+        for path in current.glob("*.md"):
+            if not path.is_file():
+                continue
+            resolved = path.resolve()
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            files.append(path)
     return sorted(files, key=lambda item: item.stat().st_mtime, reverse=True)[:limit]
 
 

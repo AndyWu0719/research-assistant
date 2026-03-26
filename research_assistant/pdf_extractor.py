@@ -8,9 +8,9 @@ from typing import Any
 
 from pypdf import PdfReader
 
-from ui.services.config_store import now_iso
-from ui.services.file_naming import pdf_text_output_path, sidecar_json_path
-from ui.services.language import normalize_language
+from research_assistant.config_store import now_iso
+from research_assistant.file_naming import pdf_text_output_path, sidecar_json_path
+from research_assistant.language import normalize_language
 
 
 WHITESPACE_RE = re.compile(r"[ \t]+")

@@ -1,1 +1,1 @@
--r ui/requirements.txt
+-r packaging/runtime-requirements.txt

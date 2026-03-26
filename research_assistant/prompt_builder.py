@@ -4,29 +4,29 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ui.services.config_store import (
+from research_assistant.config_store import (
     AGENTS_PATH,
     CONFIGS_DIR,
-    DAILY_PROFILE_PATH,
     RANKING_PROFILES_PATH,
     ROOT,
+    SCAN_DEFAULTS_PATH,
     SOURCE_POLICIES_PATH,
     SKILLS_DIR,
     current_automation_config_path,
     load_user_preferences,
     resolve_quality_profile,
 )
-from ui.services.file_naming import (
+from research_assistant.file_naming import (
     constraint_output_path,
     feasibility_output_path,
+    literature_scan_output_path,
     paper_summary_output_path_for_language,
     sidecar_json_path,
-    top10_output_path,
     topic_map_output_path,
 )
-from ui.services.language import language_display_name, normalize_language, prompt_language_instruction
-from ui.services.paper_sources import parse_reference
-from ui.services.ui_text import bool_label, is_english, risk_preference_label, summary_depth_label, time_range_label
+from research_assistant.language import language_display_name, normalize_language, prompt_language_instruction
+from research_assistant.paper_sources import parse_reference
+from research_assistant.ui_text import bool_label, is_english, risk_preference_label, summary_depth_label, time_range_label
 
 
 @dataclass(slots=True)
@@ -109,7 +109,7 @@ def common_instructions(skill_name: str, language: str) -> str:
     )
 
 
-def top10_manifest_schema(language: str) -> str:
+def literature_scout_manifest_schema(language: str) -> str:
     priority = "high / medium / low" if is_english(language) else "高 / 中 / 低"
     resource_cost = "low / medium / high" if is_english(language) else "低 / 中 / 高"
     return f"""{{
@@ -186,20 +186,40 @@ def build_literature_scout_prompt(params: dict[str, Any]) -> PromptPackage:
     field = params["field"].strip()
     ranking_profile = params["ranking_profile"]
     language = resolve_task_language(params)
-    expected_output = top10_output_path(field, ranking_profile)
+    expected_output = literature_scan_output_path(field, ranking_profile)
     manifest_output = sidecar_json_path(expected_output)
     time_range_text = format_time_range(params["time_range"], language)
     constraints_text = format_constraints(params.get("constraints"), language)
+    history_exclusion_path = str(params.get("history_exclusion_path") or "").strip()
+    history_exclusion_count = int(params.get("history_exclusion_count") or 0)
+    history_requirements = ""
+    if history_exclusion_path and history_exclusion_count > 0:
+        if is_english(language):
+            history_requirements = f"""
+History-Based Exclusions
+- You must read the historical exclusion file: {history_exclusion_path}
+- Historical paper count to exclude: {history_exclusion_count}
+- Do not include any paper whose title or `paper_url` matches that history file.
+- If the remaining candidate pool is too small after exclusion, explicitly say so instead of repeating old papers.
+"""
+        else:
+            history_requirements = f"""
+历史去重约束
+- 必须读取历史排除文件：{history_exclusion_path}
+- 需要排除的历史论文数：{history_exclusion_count}
+- 标题或 `paper_url` 命中该历史文件的论文，不得再次进入本次 Top K。
+- 如果排除后候选池明显不足，要明确写出缺口，不要用旧论文补位。
+"""
 
     if is_english(language):
         prompt = f"""Use the `literature-scout` skill to complete a literature scan.
 
 Before execution, you must finish the following:
 {common_instructions("literature-scout", language)}
-- If explicit parameters are missing, you may read the default config from: {DAILY_PROFILE_PATH}
+- If explicit parameters are missing, you may read the default config from: {SCAN_DEFAULTS_PATH}
 
 Task Understanding
-- Goal: generate a structured Top {params["top_k"]} literature scan for the requested research area.
+- Goal: generate a structured literature scan for the requested research area.
 - Research area: {field}
 - Time range: {time_range_text}
 - Sources: {format_sources(params["sources"], language)}
@@ -207,6 +227,7 @@ Task Understanding
 - Output language: {language_display_name(language)}
 - Custom constraints: {constraints_text}
 - Number of returned items: {params["top_k"]}
+{history_requirements}
 
 Output Requirements
 1. Follow the structured skeleton described in `AGENTS.md`.
@@ -217,7 +238,7 @@ Output Requirements
    - {manifest_output}
    - Use this JSON structure as a reference:
 ```json
-{top10_manifest_schema(language)}
+{literature_scout_manifest_schema(language)}
 ```
 5. The Markdown must include a Top K table with at least these columns:
    - Rank
@@ -239,7 +260,7 @@ Output Requirements
 
 执行前必须完成：
 {common_instructions("literature-scout", language)}
-- 如果显式参数缺失，可读取默认配置: {DAILY_PROFILE_PATH}
+- 如果显式参数缺失，可读取默认配置: {SCAN_DEFAULTS_PATH}
 
 任务理解
 - 目标: 为指定研究方向生成结构化 Top {params["top_k"]} 文献巡检结果。
@@ -250,6 +271,7 @@ Output Requirements
 - 输出语言: {language_display_name(language)}
 - 自定义约束: {constraints_text}
 - 返回数量: {params["top_k"]}
+{history_requirements}
 
 输出要求
 1. 按 `AGENTS.md` 中的结构化骨架输出。
@@ -260,7 +282,7 @@ Output Requirements
    - {manifest_output}
    - JSON 结构参考:
 ```json
-{top10_manifest_schema(language)}
+{literature_scout_manifest_schema(language)}
 ```
 5. Markdown 中必须包含 Top K 表格，至少包含这些列：
    - 排名
@@ -286,12 +308,14 @@ Output Requirements
         "constraints": constraints_text,
         "top_k": params["top_k"],
         "language": language,
+        "history_exclusion_path": history_exclusion_path,
+        "history_exclusion_count": history_exclusion_count,
         "expected_output": str(expected_output),
         "manifest_output": str(manifest_output),
     }
     return PromptPackage(
         skill_name="literature-scout",
-        title=f"top10-{field}",
+        title=f"literature-scan-{field}",
         prompt=prompt,
         expected_output=expected_output,
         manifest_output=manifest_output,
@@ -651,24 +675,26 @@ def build_daily_automation_prompt(config: dict[str, Any]) -> str:
     quality_mapping = resolve_quality_profile(quality_profile, task_type="automation")
     language = resolve_task_language(config)
     automation_path = current_automation_config_path()
+    exclude_previous = bool(config.get("exclude_previous_output_papers", True))
     if is_english(language):
-        return f"""Execute a daily literature scan in the project directory `{ROOT}`.
+        return f"""Execute a local daily literature scan in the project directory `{ROOT}`.
 
 Requirements:
 1. Read `{AGENTS_PATH}`.
-2. Read `{DAILY_PROFILE_PATH}` as the default parameter source.
+2. Read `{SCAN_DEFAULTS_PATH}` as the default parameter source.
 3. Use the `literature-scout` skill.
 4. Also reference:
    - `{RANKING_PROFILES_PATH}`
    - `{SOURCE_POLICIES_PATH}`
-5. Write the result to `outputs/daily_top10/`, with filenames following `YYYY-MM-DD-<field>-<ranking_profile>.md`.
+5. Write the result to `outputs/literature_scans/`, with filenames following `YYYY-MM-DD-<field>-<ranking_profile>.md`.
 6. Also write a same-name `.json` sidecar for the local web app.
 7. If `{CONFIGS_DIR / "interesting_papers.json"}` contains marked papers and `auto_download_interesting=true` in `{automation_path}`, use `paper-fetcher` to download missing PDFs into `outputs/pdfs/`.
-8. {prompt_language_instruction(language)}
-9. The quality profile in the automation config is only a recommendation. The actual model and reasoning effort for the Codex app automation still need to be chosen when creating the automation, or will fall back to the local defaults.
+8. If `exclude_previous_output_papers=true` in `{automation_path}`, read the generated history file under `{CONFIGS_DIR / "automations" / "history"}` and do not repeat previously output papers in the new Top K.
+9. {prompt_language_instruction(language)}
+10. This automation is intended for the local scheduler and `codex exec`, not for Codex app automation setup.
 
 Current Automation Summary
-- Task name: {config.get("task_name", "Daily Top 10 Literature Scan")}
+- Task name: {config.get("task_name", "Daily Literature Scan")}
 - Config file: {automation_path}
 - Research field: {field}
 - Time range: {format_time_range(config["time_range"], language)}
@@ -680,25 +706,27 @@ Current Automation Summary
 - Recommended reasoning effort: {quality_mapping["reasoning_effort"]}
 - Top K: {config["top_k"]}
 - Daily runtime: {time_of_day}
+- History dedup enabled: {exclude_previous}
 """
 
-    return f"""请在项目目录 `{ROOT}` 中执行一次每日文献巡检。
+    return f"""请在项目目录 `{ROOT}` 中执行一次本地每日文献巡检。
 
 要求：
 1. 读取 `{AGENTS_PATH}`。
-2. 读取 `{DAILY_PROFILE_PATH}`，将其作为默认参数源。
+2. 读取 `{SCAN_DEFAULTS_PATH}`，将其作为默认参数源。
 3. 使用 `literature-scout` skill。
 4. 同时参考：
    - `{RANKING_PROFILES_PATH}`
    - `{SOURCE_POLICIES_PATH}`
-5. 结果写入 `outputs/daily_top10/`，文件名遵循 `YYYY-MM-DD-<field>-<ranking_profile>.md`。
+5. 结果写入 `outputs/literature_scans/`，文件名遵循 `YYYY-MM-DD-<field>-<ranking_profile>.md`。
 6. 结果同时写一个同名 `.json` sidecar，便于本地网页读取。
 7. 如果 `{CONFIGS_DIR / "interesting_papers.json"}` 中存在已标记论文，且 `{automation_path}` 中 `auto_download_interesting=true`，再用 `paper-fetcher` 为未下载项补抓 PDF 到 `outputs/pdfs/`。
-8. {prompt_language_instruction(language)}
-9. 自动化配置中的质量档位是推荐值；Codex app automation 的实际 model / reasoning effort 仍需在创建 automation 时手动选择，或由本地默认配置决定。
+8. 如果 `{automation_path}` 中 `exclude_previous_output_papers=true`，则要读取 `{CONFIGS_DIR / "automations" / "history"}` 下生成的历史文件，避免把之前每日输出过的论文再次放入新的 Top K。
+9. {prompt_language_instruction(language)}
+10. 该自动化默认面向本地调度器和 `codex exec`，不依赖 Codex app Automation。
 
 当前自动化摘要
-- 任务名称: {config.get("task_name", "每日 Top10 文献巡检")}
+- 任务名称: {config.get("task_name", "每日文献巡检")}
 - 配置文件: {automation_path}
 - 研究领域: {field}
 - 时间范围: {format_time_range(config["time_range"], language)}
@@ -710,4 +738,5 @@ Current Automation Summary
 - 推荐 reasoning effort: {quality_mapping["reasoning_effort"]}
 - Top K: {config["top_k"]}
 - 每日运行时间: {time_of_day}
+- 历史去重: {exclude_previous}
 """
