@@ -216,6 +216,23 @@ def styled_combo_box() -> QComboBox:
     return combo
 
 
+def create_topbar_field(label_text: str, field: QWidget, *, min_width: int = 120) -> QWidget:
+    shell = QWidget()
+    shell.setObjectName("TopBarField")
+    layout = QVBoxLayout(shell)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.setSpacing(6)
+
+    label = QLabel(label_text)
+    label.setObjectName("TopBarFieldLabel")
+    layout.addWidget(label)
+
+    field.setMinimumWidth(min_width)
+    field.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+    layout.addWidget(field)
+    return shell
+
+
 def create_card(title: str, description: str | None = None, *, name: str = "PanelCard") -> tuple[QFrame, QVBoxLayout]:
     frame = QFrame()
     frame.setObjectName(name)
@@ -2371,15 +2388,13 @@ class ResearchAssistantWindow(QMainWindow):
         topbar_text.addWidget(topbar_subtitle)
         topbar_layout.addLayout(topbar_text, 1)
 
-        language_label = QLabel(t("sidebar.language", self.language))
-        language_label.setObjectName("TopBarLabel")
-        topbar_layout.addWidget(language_label)
         self.language_combo = styled_combo_box()
+        self.language_combo.setObjectName("TopBarCombo")
         self.language_combo.addItem(language_option_label("zh-CN", self.language), "zh-CN")
         self.language_combo.addItem(language_option_label("en-US", self.language), "en-US")
         self.language_combo.setCurrentIndex(max(0, self.language_combo.findData(self.language)))
         self.language_combo.currentIndexChanged.connect(self.change_language)
-        topbar_layout.addWidget(self.language_combo)
+        topbar_layout.addWidget(create_topbar_field(t("sidebar.language", self.language), self.language_combo, min_width=128))
 
         self.version_badge = QLabel()
         self.version_badge.setObjectName("VersionBadge")
@@ -2627,14 +2642,17 @@ class ResearchAssistantWindow(QMainWindow):
             QWidget#TopStatusRow {
                 background: transparent;
             }
+            QWidget#TopBarField {
+                background: transparent;
+            }
             QFrame#Sidebar {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #15392f, stop:1 #102b23);
-                border: 1px solid rgba(224, 235, 227, 0.12);
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #173f33, stop:0.56 #14382e, stop:1 #102c24);
+                border: 1px solid rgba(232, 240, 233, 0.18);
                 border-radius: 22px;
             }
             QFrame#SidebarBrand {
-                background: rgba(255, 248, 236, 0.1);
-                border: 1px solid rgba(255, 248, 236, 0.18);
+                background: rgba(255, 248, 236, 0.14);
+                border: 1px solid rgba(255, 248, 236, 0.22);
                 border-radius: 16px;
             }
             QFrame#TopBar {
@@ -2728,6 +2746,12 @@ class ResearchAssistantWindow(QMainWindow):
                 color: #59675d;
                 font-weight: 600;
             }
+            QLabel#TopBarFieldLabel {
+                color: #59675d;
+                font-size: 11px;
+                font-weight: 700;
+                padding-left: 2px;
+            }
             QLabel#TopBarTitle {
                 color: #223126;
                 font-size: 18px;
@@ -2762,20 +2786,30 @@ class ResearchAssistantWindow(QMainWindow):
                 font-size: 11px;
             }
             QListWidget#NavList {
-                background: rgba(255, 255, 255, 0.03);
-                border: none;
+                background: rgba(255, 248, 236, 0.06);
+                border: 1px solid rgba(237, 242, 237, 0.12);
                 border-radius: 16px;
-                padding: 6px;
-                color: #f8f3e7;
+                padding: 8px;
+                color: #f7f1e3;
             }
             QListWidget#NavList::item {
-                border-radius: 10px;
+                background: rgba(255, 255, 255, 0.05);
+                color: #f7f1e3;
+                border: 1px solid rgba(245, 238, 226, 0.03);
+                border-radius: 11px;
                 padding: 11px 12px;
                 margin: 4px 0;
+                font-weight: 600;
+            }
+            QListWidget#NavList::item:hover {
+                background: rgba(255, 248, 236, 0.12);
+                color: #fffaf0;
+                border: 1px solid rgba(255, 248, 236, 0.18);
             }
             QListWidget#NavList::item:selected {
                 background: #f0e2c4;
                 color: #163128;
+                border: 1px solid #e1cfab;
                 font-weight: 700;
             }
             QListWidget#MultiSelectList {
@@ -2839,6 +2873,10 @@ class ResearchAssistantWindow(QMainWindow):
             }
             QLineEdit, QComboBox, QSpinBox {
                 min-height: 34px;
+            }
+            QComboBox#TopBarCombo {
+                min-width: 128px;
+                padding-right: 28px;
             }
             QComboBox::drop-down {
                 border: none;
