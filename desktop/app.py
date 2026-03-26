@@ -179,6 +179,7 @@ def styled_combo_box() -> QComboBox:
     popup = QListView()
     popup.setObjectName("ComboPopup")
     popup.setMouseTracking(True)
+    popup.setSpacing(6)
     popup.setStyleSheet(
         """
         QListView#ComboPopup {
@@ -186,14 +187,15 @@ def styled_combo_box() -> QComboBox:
             color: #223126;
             border: 1px solid #d9ceb9;
             border-radius: 12px;
-            padding: 6px;
+            padding: 8px;
             outline: 0;
         }
         QListView#ComboPopup::item {
-            min-height: 30px;
-            padding: 7px 10px;
+            min-height: 22px;
+            padding: 4px 10px;
+            border: 1px solid transparent;
             border-radius: 8px;
-            margin: 1px 0;
+            margin: 4px 0;
             color: #223126;
             background: transparent;
         }
@@ -2891,16 +2893,17 @@ class ResearchAssistantWindow(QMainWindow):
                 color: #223126;
                 border: 1px solid #d9ceb9;
                 border-radius: 12px;
-                padding: 6px;
+                padding: 8px;
                 selection-background-color: #ead8ad;
                 selection-color: #17392d;
                 outline: 0;
             }
             QComboBox QAbstractItemView::item, QListView#ComboPopup::item, QAbstractItemView::item {
-                min-height: 30px;
-                padding: 7px 10px;
+                min-height: 22px;
+                padding: 4px 10px;
+                border: 1px solid transparent;
                 border-radius: 8px;
-                margin: 1px 0;
+                margin: 4px 0;
                 color: #223126;
                 background: transparent;
             }
