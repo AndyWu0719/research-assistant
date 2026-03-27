@@ -24,6 +24,7 @@ htmlcov/
 
 # Local preference state
 configs/user_preferences.yaml
+configs/update_state.json
 configs/automations/index.yaml
 configs/automations/*--*.yaml
 configs/automations/runtime_state.json

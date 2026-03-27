@@ -1,6 +1,9 @@
 provider: github_release
 github_repo: AndyWu0719/research-assistant
-github_asset_pattern: ResearchAssistant-macos-*.pkg
+github_asset_pattern: ""
+github_asset_pattern_by_platform:
+  macos: ResearchAssistant-macos-*.pkg
+  windows: ResearchAssistant-windows-*.exe
 github_token_env: ""
 manifest_url: ""
 channel: stable

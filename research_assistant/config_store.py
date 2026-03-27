@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import re
+import sys
 from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
@@ -256,7 +257,11 @@ DEFAULT_USER_PREFERENCES: dict[str, Any] = {
 DEFAULT_APP_UPDATE_CONFIG: dict[str, Any] = {
     "provider": "github_release",
     "github_repo": "AndyWu0719/research-assistant",
-    "github_asset_pattern": "ResearchAssistant-macos-*.pkg",
+    "github_asset_pattern": "",
+    "github_asset_pattern_by_platform": {
+        "macos": "ResearchAssistant-macos-*.pkg",
+        "windows": "ResearchAssistant-windows-*.exe",
+    },
     "github_token_env": "",
     "manifest_url": "",
     "channel": "stable",
@@ -666,12 +671,44 @@ def update_user_preferences(updates: dict[str, Any]) -> dict[str, Any]:
     return load_user_preferences()
 
 
+def current_release_platform() -> str:
+    if os.name == "nt" or sys.platform.startswith("win"):
+        return "windows"
+    if sys.platform == "darwin":
+        return "macos"
+    return "linux"
+
+
+def default_github_asset_pattern(platform: str | None = None) -> str:
+    normalized = str(platform or current_release_platform()).strip().lower()
+    if normalized == "windows":
+        return "ResearchAssistant-windows-*.exe"
+    return "ResearchAssistant-macos-*.pkg"
+
+
 def load_app_update_config() -> dict[str, Any]:
     payload = load_yaml(APP_UPDATE_CONFIG_PATH, DEFAULT_APP_UPDATE_CONFIG)
     payload = deep_merge(DEFAULT_APP_UPDATE_CONFIG, payload)
     payload["provider"] = str(payload.get("provider") or "github_release").strip() or "github_release"
     payload["github_repo"] = str(payload.get("github_repo") or "").strip().strip("/")
-    payload["github_asset_pattern"] = str(payload.get("github_asset_pattern") or "").strip() or "ResearchAssistant-macos-*.pkg"
+    raw_patterns = payload.get("github_asset_pattern_by_platform")
+    if not isinstance(raw_patterns, dict):
+        raw_patterns = {}
+    payload["github_asset_pattern_by_platform"] = {
+        "macos": str(raw_patterns.get("macos") or "").strip() or default_github_asset_pattern("macos"),
+        "windows": str(raw_patterns.get("windows") or "").strip() or default_github_asset_pattern("windows"),
+    }
+    explicit_pattern = str(payload.get("github_asset_pattern") or "").strip()
+    if explicit_pattern in {
+        default_github_asset_pattern("macos"),
+        default_github_asset_pattern("windows"),
+    }:
+        explicit_pattern = ""
+    payload["github_asset_pattern"] = (
+        explicit_pattern
+        or payload["github_asset_pattern_by_platform"].get(current_release_platform())
+        or default_github_asset_pattern()
+    )
     payload["github_token_env"] = str(payload.get("github_token_env") or "").strip()
     payload["manifest_url"] = str(payload.get("manifest_url") or "").strip()
     payload["channel"] = str(payload.get("channel") or "stable").strip() or "stable"

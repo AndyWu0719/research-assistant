@@ -16,7 +16,13 @@ from urllib.request import Request, urlopen
 
 import yaml
 
-from research_assistant.config_store import APP_UPDATE_CONFIG_PATH, ROOT, load_app_update_config
+from research_assistant.config_store import (
+    APP_UPDATE_CONFIG_PATH,
+    ROOT,
+    current_release_platform,
+    default_github_asset_pattern,
+    load_app_update_config,
+)
 
 
 APP_NAME = "Research Assistant"
@@ -155,23 +161,37 @@ def _extract_semver(*candidates: str) -> str:
     return ""
 
 
-def _resolve_release_asset(release: dict[str, Any], pattern: str) -> tuple[dict[str, Any] | None, str]:
+def _default_asset_suffixes(platform: str) -> tuple[str, ...]:
+    if platform == "windows":
+        return (".exe",)
+    return (".pkg",)
+
+
+def _default_installer_filename(version: str, platform: str) -> str:
+    if platform == "windows":
+        return f"ResearchAssistant-windows-{version}.exe"
+    return f"ResearchAssistant-macos-{version}.pkg"
+
+
+def _resolve_release_asset(release: dict[str, Any], pattern: str, platform: str) -> tuple[dict[str, Any] | None, str]:
     assets = release.get("assets") or []
     if not isinstance(assets, list):
         return None, ""
 
-    normalized_pattern = pattern.strip() or "ResearchAssistant-macos-*.pkg"
+    normalized_pattern = pattern.strip() or default_github_asset_pattern(platform)
     for asset in assets:
         if not isinstance(asset, dict):
             continue
         name = str(asset.get("name") or "")
         if fnmatch.fnmatch(name, normalized_pattern):
             return asset, name
+
+    suffixes = _default_asset_suffixes(platform)
     for asset in assets:
         if not isinstance(asset, dict):
             continue
         name = str(asset.get("name") or "")
-        if name.endswith(".pkg"):
+        if any(name.endswith(suffix) for suffix in suffixes):
             return asset, name
     return None, ""
 
@@ -198,14 +218,15 @@ def _manifest_from_github_release(config: dict[str, Any]) -> tuple[dict[str, Any
         if exc.code == 404:
             raise ValueError("GitHub Releases 暂无已发布版本。") from exc
         raise
-    asset, asset_name = _resolve_release_asset(release, str(config.get("github_asset_pattern") or ""))
+    platform = current_release_platform()
+    asset, asset_name = _resolve_release_asset(release, str(config.get("github_asset_pattern") or ""), platform)
     latest_version = _extract_semver(
         asset_name,
         str(release.get("name") or ""),
         str(release.get("tag_name") or ""),
     )
     if not latest_version:
-        raise ValueError("无法从 GitHub Release 解析版本号，请确保 tag 或 pkg 文件名里包含 x.y.z。")
+        raise ValueError("无法从 GitHub Release 解析版本号，请确保 tag 或安装包文件名里包含 x.y.z。")
 
     download_url = str(asset.get("browser_download_url") or "").strip() if asset else ""
     notes = str(release.get("body") or "").strip()
@@ -291,7 +312,7 @@ def _download_filename_from_url(download_url: str, version: str, fallback_name: 
     name = unquote(Path(parsed.path).name)
     if name:
         return name
-    return f"ResearchAssistant-macos-{version}.pkg"
+    return _default_installer_filename(version, current_release_platform())
 
 
 def download_update_package(download_url: str, version: str, fallback_name: str | None = None) -> dict[str, Any]:
@@ -328,13 +349,16 @@ def check_for_updates() -> dict[str, Any]:
     config = load_app_update_config()
     provider = str(config.get("provider") or "manifest").strip() or "manifest"
     manifest_url = str(config.get("manifest_url") or "").strip()
+    target_platform = current_release_platform()
     base_payload = {
         "current_version": build["version"],
         "config_path": str(APP_UPDATE_CONFIG_PATH),
         "provider": provider,
         "manifest_url": manifest_url,
         "github_repo": str(config.get("github_repo") or "").strip(),
+        "github_asset_pattern": str(config.get("github_asset_pattern") or "").strip(),
         "channel": config.get("channel", "stable"),
+        "target_platform": target_platform,
         "download_in_app": bool(config.get("download_in_app", True)),
         "open_download_in_browser": bool(config.get("open_download_in_browser", False)),
     }
