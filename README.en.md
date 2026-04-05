@@ -8,6 +8,12 @@
 
 This project is not a browser shell and not a prompt-only wrapper.
 
+## Repository Meta
+
+- Contribution guide: [`CONTRIBUTING.md`](CONTRIBUTING.md)
+- Security policy: [`SECURITY.md`](SECURITY.md)
+- Windows build workflow: [`build-windows-installer.yml`](.github/workflows/build-windows-installer.yml)
+
 ## Architecture
 
 ```mermaid

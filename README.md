@@ -8,6 +8,12 @@
 
 这不是浏览器套壳，也不是只生成 prompt 的外壳。
 
+## 仓库规范
+
+- 贡献说明：[`CONTRIBUTING.md`](CONTRIBUTING.md)
+- 安全策略：[`SECURITY.md`](SECURITY.md)
+- Windows 构建工作流：[`build-windows-installer.yml`](.github/workflows/build-windows-installer.yml)
+
 ## 一句话架构
 
 ```mermaid

@@ -34,6 +34,8 @@ configs/automations/history/*
 # Local runtime artifacts in outputs/
 outputs/daily_top10/*
 !outputs/daily_top10/.gitkeep
+outputs/literature_scans/*
+!outputs/literature_scans/.gitkeep
 outputs/paper_summaries/*
 !outputs/paper_summaries/.gitkeep
 outputs/topic_maps/*
