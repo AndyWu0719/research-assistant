@@ -28,8 +28,6 @@ permissions:
 jobs:
   validate:
     runs-on: windows-latest
-    env:
-      ARTIFACT_DIR: ${{ runner.temp }}\windows-ui-validation
 
     steps:
       - name: Checkout
@@ -73,11 +71,13 @@ jobs:
 
           $assetName = "ResearchAssistant-windows-$version.exe"
           $downloadUrl = "https://github.com/${{ github.repository }}/releases/download/$releaseTag/$assetName"
+          $artifactDir = Join-Path $env:RUNNER_TEMP "windows-ui-validation"
 
           "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "release_tag=$releaseTag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "asset_name=$assetName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "download_url=$downloadUrl" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "artifact_dir=$artifactDir" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       - name: Download release installer
         shell: pwsh
@@ -119,7 +119,7 @@ jobs:
       - name: Launch app and capture screenshot
         shell: pwsh
         run: |
-          $artifactDir = $env:ARTIFACT_DIR
+          $artifactDir = "${{ steps.meta.outputs.artifact_dir }}"
           New-Item -ItemType Directory -Force -Path $artifactDir | Out-Null
 
           $screenshotPath = Join-Path $artifactDir "research-assistant-windows-ui.png"
@@ -173,5 +173,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: windows-ui-validation-${{ steps.meta.outputs.version }}
-          path: ${{ env.ARTIFACT_DIR }}
+          path: ${{ steps.meta.outputs.artifact_dir }}
           if-no-files-found: error
