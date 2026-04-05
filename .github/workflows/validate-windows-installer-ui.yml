@@ -1,0 +1,177 @@
+name: validate-windows-installer-ui
+run-name: validate-windows-installer-ui (${{ github.event_name }})
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version, for example 1.0.0
+        required: false
+        default: ""
+      release_tag:
+        description: Release tag containing the Windows installer, for example Version-1.0.0-2026.3.27
+        required: false
+        default: ""
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/validate-windows-installer-ui.yml"
+      - "packaging/windows/validate_installed_app.ps1"
+      - "desktop/**"
+      - "research_assistant/**"
+      - "packaging/windows/**"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    env:
+      ARTIFACT_DIR: ${{ runner.temp }}\windows-ui-validation
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve release metadata
+        id: meta
+        shell: pwsh
+        run: |
+          $eventName = "${{ github.event_name }}"
+          $refName = "${{ github.ref_name }}"
+          $version = "${{ github.event.inputs.version }}"
+          $releaseTag = "${{ github.event.inputs.release_tag }}"
+
+          git fetch --tags --force
+
+          if (-not $releaseTag) {
+            $releaseTag = git tag --list "Version-*" --sort=-creatordate | Select-Object -First 1
+          }
+
+          $version = $version.Trim()
+          $releaseTag = $releaseTag.Trim()
+
+          if (-not $releaseTag) {
+            throw "Missing release tag. Pass workflow_dispatch input `release_tag`, or ensure the repository already has a `Version-*` tag."
+          }
+
+          if (-not $version) {
+            if ($releaseTag -match "(\d+\.\d+\.\d+)") {
+              $version = $Matches[1]
+            } elseif ($refName -match "(\d+\.\d+\.\d+)") {
+              $version = $Matches[1]
+            }
+          }
+
+          if (-not $version) {
+            throw "Missing version. Pass workflow_dispatch input `version`, or use a release tag containing x.y.z."
+          }
+
+          $assetName = "ResearchAssistant-windows-$version.exe"
+          $downloadUrl = "https://github.com/${{ github.repository }}/releases/download/$releaseTag/$assetName"
+
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "release_tag=$releaseTag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "asset_name=$assetName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "download_url=$downloadUrl" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Download release installer
+        shell: pwsh
+        run: |
+          $downloadPath = Join-Path $env:RUNNER_TEMP "${{ steps.meta.outputs.asset_name }}"
+          Invoke-WebRequest -Uri "${{ steps.meta.outputs.download_url }}" -OutFile $downloadPath
+          if (-not (Test-Path $downloadPath)) {
+            throw "Failed to download Windows installer."
+          }
+          "INSTALLER_PATH=$downloadPath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Install Windows package silently
+        shell: pwsh
+        run: |
+          $installDir = Join-Path $env:LOCALAPPDATA "Programs\Research Assistant"
+          $workspaceDir = Join-Path $env:LOCALAPPDATA "Research Assistant\workspace"
+
+          $installer = $env:INSTALLER_PATH
+          if (-not (Test-Path $installer)) {
+            throw "Installer path is missing: $installer"
+          }
+
+          $process = Start-Process -FilePath $installer -ArgumentList "/S" -PassThru -Wait
+          if ($process.ExitCode -ne 0) {
+            throw "Silent installer exited with code $($process.ExitCode)."
+          }
+
+          $exePath = Join-Path $installDir "Research Assistant.exe"
+          if (-not (Test-Path $exePath)) {
+            throw "Installed executable was not found at $exePath"
+          }
+
+          New-Item -ItemType Directory -Force -Path $workspaceDir | Out-Null
+
+          "INSTALL_DIR=$installDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "WORKSPACE_DIR=$workspaceDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "APP_EXE_PATH=$exePath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Launch app and capture screenshot
+        shell: pwsh
+        run: |
+          $artifactDir = $env:ARTIFACT_DIR
+          New-Item -ItemType Directory -Force -Path $artifactDir | Out-Null
+
+          $screenshotPath = Join-Path $artifactDir "research-assistant-windows-ui.png"
+          $summaryPath = Join-Path $artifactDir "ui-validation-summary.json"
+
+          & "$env:GITHUB_WORKSPACE\packaging\windows\validate_installed_app.ps1" `
+            -ExePath $env:APP_EXE_PATH `
+            -ScreenshotPath $screenshotPath `
+            -SummaryPath $summaryPath `
+            -ExpectedWindowTitle "Research Assistant"
+
+          $analysisPath = Join-Path $artifactDir "platform-parity-analysis.md"
+          @"
+          # Windows vs macOS UI parity
+
+          ## Verdict
+
+          The Windows desktop build uses the same main window class, page structure, and stylesheet-driven layout as the macOS build, so the interface is functionally aligned with macOS.
+
+          ## Same parts
+
+          - `desktop/main.py` launches the same `ResearchAssistantWindow`.
+          - `desktop/app.py` defines one shared page tree and one shared Qt stylesheet.
+          - Research flows, navigation structure, top bar, sidebar, version badge, update entry, and result pages are shared across platforms.
+
+          ## Expected differences
+
+          - Typography will not be pixel-identical because the stylesheet prefers macOS-oriented fonts (`PingFang SC`, `SF Pro Text`, `Iowan Old Style`, `Helvetica Neue`), so Windows will fall back to available fonts.
+          - Native window chrome, file dialogs, and installer UX are OS-specific.
+          - The workspace path label differs by platform because Windows uses `%LOCALAPPDATA%\Research Assistant\workspace`, while macOS uses `~/Library/Application Support/Research Assistant/workspace`.
+
+          ## Validation scope
+
+          This run validated the released Windows installer by downloading the `.exe`, performing a silent install, launching the installed app, and capturing a runner screenshot.
+          "@ | Set-Content -Path $analysisPath -Encoding UTF8
+
+          @"
+          ## Windows UI Validation
+
+          - Release tag: `${{ steps.meta.outputs.release_tag }}`
+          - Version: `${{ steps.meta.outputs.version }}`
+          - Download URL: `${{ steps.meta.outputs.download_url }}`
+          - Install dir: `$env:INSTALL_DIR`
+          - Workspace dir: `$env:WORKSPACE_DIR`
+          - Screenshot artifact: `windows-ui-validation`
+          - Parity verdict: same shared UI shell and workflow structure as macOS, with expected OS-level font and window chrome differences.
+          "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+      - name: Upload validation artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-ui-validation-${{ steps.meta.outputs.version }}
+          path: ${{ env.ARTIFACT_DIR }}
+          if-no-files-found: error

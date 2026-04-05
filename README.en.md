@@ -252,6 +252,13 @@ The current smoke test checks:
 - PDF resolve-only path
 - Basic update-check behavior
 
+Windows installer UI validation:
+
+- Workflow file: `.github/workflows/validate-windows-installer-ui.yml`
+- Downloads `ResearchAssistant-windows-<version>.exe` from GitHub Releases
+- Performs a silent install on a GitHub-hosted Windows runner, launches the installed app, captures a screenshot, and uploads the artifact
+- Includes a `Windows vs macOS UI parity` note describing what is shared and what still differs at the OS level
+
 Reports are written to:
 
 - `outputs/smoke_tests/`

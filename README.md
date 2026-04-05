@@ -252,6 +252,13 @@ python scripts/smoke_test.py
 - PDF resolve-only 路径
 - 基础更新检查行为
 
+Windows 安装包 UI 验证：
+
+- 工作流文件：`.github/workflows/validate-windows-installer-ui.yml`
+- 会从 GitHub Release 下载 `ResearchAssistant-windows-<version>.exe`
+- 在 GitHub Hosted Windows runner 上静默安装、启动应用、截屏并上传 artifact
+- 会附带一份 `Windows vs macOS UI parity` 分析，说明哪些部分一致，哪些部分会因系统字体和窗口边框而不同
+
 报告目录：
 
 - `outputs/smoke_tests/`
