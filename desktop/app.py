@@ -2510,7 +2510,7 @@ class ResearchAssistantWindow(QMainWindow):
             self.prepare_codex_button.setEnabled(False)
             self.prepare_codex_button.setText(ui_text("准备中...", "Preparing...", self.language))
         else:
-            self.prepare_codex_button.setEnabled(sys.platform == "darwin")
+            self.prepare_codex_button.setEnabled(sys.platform == "darwin" or os.name == "nt")
             self.prepare_codex_button.setText(
                 ui_text("修复 Codex", "Repair Codex", self.language)
                 if codex.available
@@ -2528,7 +2528,7 @@ class ResearchAssistantWindow(QMainWindow):
             self.login_codex_button.setText(ui_text("等待 Codex", "Waiting For Codex", self.language))
 
     def _auto_prepare_codex_if_needed(self) -> None:
-        if sys.platform != "darwin" or not is_frozen_app():
+        if not is_frozen_app() or (sys.platform != "darwin" and os.name != "nt"):
             return
         if self._codex_prepare_worker and self._codex_prepare_worker.isRunning():
             return

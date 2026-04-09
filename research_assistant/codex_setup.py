@@ -11,6 +11,7 @@ import sys
 import tarfile
 import tempfile
 import urllib.request
+import zipfile
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -45,7 +46,8 @@ def support_root() -> Path:
     if sys.platform == "darwin":
         return Path.home() / "Library" / "Application Support" / APP_NAME
     if os.name == "nt":
-        local_app_data = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+        local_app_data_raw = os.environ.get("LOCALAPPDATA")
+        local_app_data = Path(local_app_data_raw) if local_app_data_raw else Path.home() / "AppData" / "Local"
         return local_app_data / APP_NAME
     return Path.home() / ".local" / "share" / APP_NAME.lower().replace(" ", "-")
 
@@ -71,14 +73,38 @@ def managed_npm_cache_dir() -> Path:
 
 
 def managed_codex_executable() -> Path:
+    if os.name == "nt":
+        return managed_npm_prefix() / "codex.cmd"
     return managed_npm_prefix() / "bin" / "codex"
 
 
 def managed_npm_executable() -> Path:
+    if os.name == "nt":
+        return managed_node_runtime_dir() / "npm.cmd"
     return managed_node_runtime_dir() / "bin" / "npm"
 
 
+def managed_node_executable() -> Path:
+    if os.name == "nt":
+        return managed_node_runtime_dir() / "node.exe"
+    return managed_node_runtime_dir() / "bin" / "node"
+
+
+def managed_node_bin_dir() -> Path:
+    if os.name == "nt":
+        return managed_node_runtime_dir()
+    return managed_node_runtime_dir() / "bin"
+
+
+def managed_codex_bin_dir() -> Path:
+    if os.name == "nt":
+        return managed_npm_prefix()
+    return managed_npm_prefix() / "bin"
+
+
 def managed_login_script_path() -> Path:
+    if os.name == "nt":
+        return codex_runtime_root() / "Launch Codex Login.bat"
     return codex_runtime_root() / "Launch Codex Login.command"
 
 
@@ -118,14 +144,29 @@ def _detect_language(language: str | None = None) -> str:
 
 
 def _candidate_paths() -> list[Path]:
-    candidates = [
-        managed_codex_executable(),
-        Path("/opt/homebrew/bin/codex"),
-        Path("/usr/local/bin/codex"),
-        Path.home() / ".local/bin/codex",
-        Path.home() / ".npm-global/bin/codex",
-        Path.home() / ".nvm/versions/node/current/bin/codex",
-    ]
+    if os.name == "nt":
+        app_data_raw = os.environ.get("APPDATA")
+        local_app_data_raw = os.environ.get("LOCALAPPDATA")
+        app_data = Path(app_data_raw) if app_data_raw else Path.home() / "AppData" / "Roaming"
+        local_app_data = Path(local_app_data_raw) if local_app_data_raw else Path.home() / "AppData" / "Local"
+        candidates = [
+            managed_codex_executable(),
+            app_data / "npm" / "codex.cmd",
+            app_data / "npm" / "codex",
+            local_app_data / "npm" / "codex.cmd",
+            Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "nodejs" / "codex.cmd",
+            Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")) / "nodejs" / "codex.cmd",
+            local_app_data / "Programs" / "nodejs" / "codex.cmd",
+        ]
+    else:
+        candidates = [
+            managed_codex_executable(),
+            Path("/opt/homebrew/bin/codex"),
+            Path("/usr/local/bin/codex"),
+            Path.home() / ".local/bin/codex",
+            Path.home() / ".npm-global/bin/codex",
+            Path.home() / ".nvm/versions/node/current/bin/codex",
+        ]
     return [candidate for candidate in candidates if candidate.exists() and candidate.is_file()]
 
 
@@ -145,6 +186,17 @@ def resolve_npm_executable() -> str | None:
     candidate = managed_npm_executable()
     if candidate.exists() and candidate.is_file():
         return str(candidate)
+    if os.name == "nt":
+        local_app_data_raw = os.environ.get("LOCALAPPDATA")
+        local_app_data = Path(local_app_data_raw) if local_app_data_raw else Path.home() / "AppData" / "Local"
+        npm_candidates = [
+            Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "nodejs" / "npm.cmd",
+            Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")) / "nodejs" / "npm.cmd",
+            local_app_data / "Programs" / "nodejs" / "npm.cmd",
+        ]
+        for item in npm_candidates:
+            if item.exists() and item.is_file():
+                return str(item)
     return None
 
 
@@ -157,12 +209,30 @@ def is_managed_codex_executable(executable: str | Path | None) -> bool:
         return False
 
 
+def codex_command_env(executable: str | Path | None = None) -> dict[str, str]:
+    env = os.environ.copy()
+    target = str(executable or "").strip()
+    if not is_managed_codex_executable(target):
+        return env
+
+    path_entries: list[str] = [
+        str(managed_node_bin_dir()),
+        str(managed_codex_bin_dir()),
+    ]
+    current_path = env.get("PATH", "")
+    if current_path:
+        path_entries.append(current_path)
+    env["PATH"] = os.pathsep.join(path_entries)
+    return env
+
+
 def _command_output(command: list[str]) -> str:
     process = subprocess.run(
         command,
         capture_output=True,
         text=True,
         check=False,
+        env=codex_command_env(command[0] if command else None),
     )
     output = (process.stdout or process.stderr or "").strip()
     if process.returncode != 0:
@@ -186,6 +256,15 @@ def _macos_node_archive_metadata() -> tuple[str, str]:
     raise RuntimeError(f"暂不支持当前 macOS 架构：{machine}")
 
 
+def _windows_node_archive_metadata() -> tuple[str, str]:
+    machine = platform.machine().lower()
+    if machine in {"amd64", "x86_64"}:
+        return "win-x64-zip", "win-x64"
+    if machine in {"arm64", "aarch64"}:
+        return "win-arm64-zip", "win-arm64"
+    raise RuntimeError(f"暂不支持当前 Windows 架构：{machine}")
+
+
 def _safe_extract_tar(archive_path: Path, destination: Path) -> None:
     destination.mkdir(parents=True, exist_ok=True)
     destination_root = destination.resolve()
@@ -197,6 +276,17 @@ def _safe_extract_tar(archive_path: Path, destination: Path) -> None:
         archive.extractall(destination)
 
 
+def _safe_extract_zip(archive_path: Path, destination: Path) -> None:
+    destination.mkdir(parents=True, exist_ok=True)
+    destination_root = destination.resolve()
+    with zipfile.ZipFile(archive_path) as archive:
+        for member in archive.infolist():
+            target_path = (destination / member.filename).resolve()
+            if target_path != destination_root and destination_root not in target_path.parents:
+                raise RuntimeError(f"Node.js 安装包包含非法路径：{member.filename}")
+        archive.extractall(destination)
+
+
 def _download_file(url: str, destination: Path) -> None:
     request = urllib.request.Request(url, headers={"User-Agent": f"{APP_NAME} Codex Bootstrap"})
     with urllib.request.urlopen(request, timeout=60) as response, destination.open("wb") as handle:
@@ -204,21 +294,28 @@ def _download_file(url: str, destination: Path) -> None:
 
 
 def _latest_node_lts_release() -> tuple[dict[str, Any], str]:
-    files_key, archive_suffix = _macos_node_archive_metadata()
+    if sys.platform == "darwin":
+        files_key, archive_suffix = _macos_node_archive_metadata()
+        archive_name_builder = lambda version: f"node-{version}-{archive_suffix}.tar.xz"
+    elif os.name == "nt":
+        files_key, archive_suffix = _windows_node_archive_metadata()
+        archive_name_builder = lambda version: f"node-{version}-{archive_suffix}.zip"
+    else:
+        raise RuntimeError("当前自动准备流程仅覆盖 macOS 和 Windows。")
     request = urllib.request.Request(NODE_INDEX_URL, headers={"User-Agent": f"{APP_NAME} Codex Bootstrap"})
     with urllib.request.urlopen(request, timeout=30) as response:
         payload = json.load(response)
 
     for item in payload:
         if item.get("lts") and files_key in item.get("files", []):
-            archive_name = f"node-{item['version']}-{archive_suffix}.tar.xz"
+            archive_name = archive_name_builder(item["version"])
             return item, archive_name
-    raise RuntimeError("未找到适用于当前 macOS 架构的 Node.js LTS 发行版。")
+    raise RuntimeError("未找到适用于当前平台架构的 Node.js LTS 发行版。")
 
 
 def _install_managed_node_runtime(language: str) -> tuple[str, list[str]]:
-    if sys.platform != "darwin":
-        raise RuntimeError(_localized("当前自动准备流程仅覆盖 macOS。", "The managed bootstrap flow currently only supports macOS.", language))
+    if sys.platform != "darwin" and os.name != "nt":
+        raise RuntimeError(_localized("当前自动准备流程仅覆盖 macOS 和 Windows。", "The managed bootstrap flow currently only supports macOS and Windows.", language))
 
     release, archive_name = _latest_node_lts_release()
     runtime_root = codex_runtime_root()
@@ -237,9 +334,15 @@ def _install_managed_node_runtime(language: str) -> tuple[str, list[str]]:
         archive_path = temp_root / archive_name
         extract_root = temp_root / "extract"
         _download_file(download_url, archive_path)
-        _safe_extract_tar(archive_path, extract_root)
+        if archive_name.endswith(".zip"):
+            _safe_extract_zip(archive_path, extract_root)
+        else:
+            _safe_extract_tar(archive_path, extract_root)
 
-        extracted_dir = extract_root / archive_name.removesuffix(".tar.xz")
+        if archive_name.endswith(".zip"):
+            extracted_dir = extract_root / archive_name.removesuffix(".zip")
+        else:
+            extracted_dir = extract_root / archive_name.removesuffix(".tar.xz")
         if not extracted_dir.exists():
             children = [path for path in extract_root.iterdir() if path.is_dir()]
             if len(children) != 1:
@@ -270,7 +373,13 @@ def _install_codex_with_npm(npm_executable: str, language: str) -> tuple[str, li
 
     env = os.environ.copy()
     npm_bin_dir = str(Path(npm_executable).expanduser().resolve().parent)
-    env["PATH"] = npm_bin_dir if not env.get("PATH") else f"{npm_bin_dir}:{env['PATH']}"
+    path_entries = [npm_bin_dir]
+    managed_node_dir = str(managed_node_bin_dir())
+    if Path(managed_node_dir).exists():
+        path_entries.append(managed_node_dir)
+    if env.get("PATH"):
+        path_entries.append(env["PATH"])
+    env["PATH"] = os.pathsep.join(path_entries)
     env["NPM_CONFIG_CACHE"] = str(managed_npm_cache_dir())
     env["NPM_CONFIG_UPDATE_NOTIFIER"] = "false"
 
@@ -398,16 +507,49 @@ def open_codex_login_terminal(language: str | None = None, executable: str | Non
 
     script_path = managed_login_script_path()
     script_path.parent.mkdir(parents=True, exist_ok=True)
-    script_path.write_text(
-        "\n".join(
+    if os.name == "nt":
+        path_prefix = os.pathsep.join([str(managed_node_bin_dir()), str(managed_codex_bin_dir())]) if is_managed_codex_executable(target) else ""
+        lines = [
+            "@echo off",
+            "title Research Assistant - Codex Login",
+            f'echo {_localized("Research Assistant 已为你准备好 Codex 登录。", "Research Assistant has prepared Codex login for you.", lang)}',
+            f'echo {_localized("窗口会执行 codex login；完成授权后直接回到桌面端即可。", "This window will run codex login. Return to the desktop app after authorization.", lang)}',
+            "echo.",
+        ]
+        if path_prefix:
+            lines.append(f'set "PATH={path_prefix};%PATH%"')
+        lines.extend(
             [
-                "#!/bin/bash",
-                "set -u",
+                f'"{target}" login',
+                "set STATUS=%ERRORLEVEL%",
+                "echo.",
+                "if \"%STATUS%\"==\"0\" (",
+                f'  echo {_localized("Codex 登录命令已结束。若浏览器授权成功，桌面端会在后续刷新中变为可执行。", "The Codex login command finished. If browser authorization succeeded, the desktop app will detect it on refresh.", lang)}',
+                ") else (",
+                f'  echo {_localized("Codex 登录命令退出状态：", "Codex login exited with status:", lang)} %STATUS%',
+                ")",
+                "echo.",
+                f'echo {_localized("这个窗口可以直接关闭。", "You can close this window now.", lang)}',
+                "pause",
                 "",
-                "clear",
-                f'echo "{_localized("Research Assistant 已为你准备好 Codex 登录。", "Research Assistant has prepared Codex login for you.", lang)}"',
-                f'echo "{_localized("终端会执行 codex login；完成授权后直接回到桌面端即可。", "The terminal will run codex login. Return to the desktop app after authorization.", lang)}"',
-                'echo ""',
+            ]
+        )
+        script_path.write_text("\r\n".join(lines), encoding="utf-8")
+    else:
+        path_prefix = os.pathsep.join([str(managed_node_bin_dir()), str(managed_codex_bin_dir())]) if is_managed_codex_executable(target) else ""
+        lines = [
+            "#!/bin/bash",
+            "set -u",
+            "",
+            "clear",
+            f'echo "{_localized("Research Assistant 已为你准备好 Codex 登录。", "Research Assistant has prepared Codex login for you.", lang)}"',
+            f'echo "{_localized("终端会执行 codex login；完成授权后直接回到桌面端即可。", "The terminal will run codex login. Return to the desktop app after authorization.", lang)}"',
+            'echo ""',
+        ]
+        if path_prefix:
+            lines.append(f'export PATH="{path_prefix}:$PATH"')
+        lines.extend(
+            [
                 f"{shlex.quote(target)} login",
                 "status=$?",
                 'echo ""',
@@ -421,15 +563,16 @@ def open_codex_login_terminal(language: str | None = None, executable: str | Non
                 'exec "${SHELL:-/bin/zsh}" -l',
                 "",
             ]
-        ),
-        encoding="utf-8",
-    )
-    script_path.chmod(script_path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+        )
+        script_path.write_text("\n".join(lines), encoding="utf-8")
+        script_path.chmod(script_path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
     if sys.platform == "darwin":
         subprocess.run(["open", str(script_path)], check=True)
+    elif os.name == "nt":
+        os.startfile(str(script_path))  # type: ignore[attr-defined]
     else:
-        subprocess.Popen([target, "login"])
+        subprocess.Popen([target, "login"], env=codex_command_env(target))
 
     return CodexSetupResult(
         status="started",

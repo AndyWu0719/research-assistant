@@ -4,6 +4,7 @@ import contextlib
 import importlib.util
 import io
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -14,7 +15,7 @@ from typing import Any
 import yaml
 
 from research_assistant.config_store import OUTPUTS_DIR, ROOT, ensure_project_layout, load_user_preferences, now_iso, resolve_quality_profile
-from research_assistant.codex_setup import is_managed_codex_executable, resolve_codex_executable
+from research_assistant.codex_setup import codex_command_env, is_managed_codex_executable, resolve_codex_executable
 from research_assistant.file_naming import prompt_request_path
 from research_assistant.language import normalize_language
 from research_assistant.pdf_extractor import extract_pdf_text
@@ -321,6 +322,12 @@ def detect_codex_cli(refresh: bool = False, language: str | None = None) -> Code
                 if is_english(lang)
                 else "在 macOS 安装包中，应用会在首次启动时自动准备 Codex CLI。"
             )
+        elif os.name == "nt":
+            _CODEX_STATUS_CACHE[lang].notes.append(
+                "On Windows packaged installs, the app can bootstrap Codex CLI automatically on first launch."
+                if is_english(lang)
+                else "在 Windows 安装包中，应用会在首次启动时自动准备 Codex CLI。"
+            )
         return _CODEX_STATUS_CACHE[lang]
 
     version = None
@@ -343,6 +350,7 @@ def detect_codex_cli(refresh: bool = False, language: str | None = None) -> Code
             capture_output=True,
             text=True,
             check=False,
+            env=codex_command_env(executable),
         )
         version = (version_process.stdout or version_process.stderr).strip() or None
     except OSError as exc:
@@ -361,6 +369,7 @@ def detect_codex_cli(refresh: bool = False, language: str | None = None) -> Code
             capture_output=True,
             text=True,
             check=False,
+            env=codex_command_env(executable),
         )
         output = (login_process.stdout or login_process.stderr).strip()
         lowered = output.lower()
@@ -700,6 +709,7 @@ def _invoke_codex_exec(prompt: str, quality: QualityProfileSelection, executable
             text=True,
             input=prompt,
             check=False,
+            env=codex_command_env(executable),
         )
         last_message = last_message_path.read_text(encoding="utf-8").strip() if last_message_path.exists() else ""
         try:
