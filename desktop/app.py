@@ -4,6 +4,7 @@ import json
 import os
 import signal
 import subprocess
+import sys
 import traceback
 from datetime import datetime
 from pathlib import Path
@@ -40,7 +41,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from desktop.runtime import runtime_project_root, scheduler_command, workspace_root
+from desktop.runtime import is_frozen_app, runtime_project_root, scheduler_command, workspace_root
 from research_assistant.app_update import (
     check_for_updates,
     current_version,
@@ -66,6 +67,12 @@ from research_assistant.codex_bridge import (
     run_paper_fetch,
     run_paper_reader,
     run_topic_mapper,
+)
+from research_assistant.codex_setup import (
+    mark_auto_prepare_attempt,
+    open_codex_login_terminal,
+    prepare_codex_cli,
+    should_auto_prepare,
 )
 from research_assistant.config_store import (
     APP_UPDATE_CONFIG_PATH,
@@ -814,6 +821,9 @@ class HomePage(ScrollPage):
         if codex.issues:
             status_lines.append(f"- {ui_text('问题', 'Issues', self.language)}:")
             status_lines.extend(f"  - {item}" for item in codex.issues)
+        if codex.notes:
+            status_lines.append(f"- {ui_text('说明', 'Notes', self.language)}:")
+            status_lines.extend(f"  - {item}" for item in codex.notes)
         status_lines.extend(
             [
                 "",
@@ -2304,11 +2314,20 @@ class ResearchAssistantWindow(QMainWindow):
         ensure_project_layout()
         self._update_worker: WorkerThread | None = None
         self._update_download_worker: WorkerThread | None = None
+        self._codex_prepare_worker: WorkerThread | None = None
+        self._auto_codex_prepare = False
+        self._codex_login_notice_pending = False
+        self._codex_login_poll_remaining = 0
+        self._codex_login_poll_timer = QTimer(self)
+        self._codex_login_poll_timer.setInterval(5000)
+        self._codex_login_poll_timer.timeout.connect(self._poll_codex_login_status)
         self._silent_update_check = False
         self.setWindowTitle("Research Assistant")
         self.resize(1560, 1024)
         self._build_ui()
         self._apply_style()
+        self._refresh_codex_surfaces()
+        QTimer.singleShot(900, self._auto_prepare_codex_if_needed)
         if should_auto_check_updates():
             QTimer.singleShot(1200, self.check_app_update_silently)
 
@@ -2410,6 +2429,14 @@ class ResearchAssistantWindow(QMainWindow):
         self.check_updates_button.clicked.connect(self.check_app_update)
         topbar_layout.addWidget(self.check_updates_button)
 
+        self.prepare_codex_button = set_secondary(QPushButton(ui_text("准备 Codex", "Prepare Codex", self.language)))
+        self.prepare_codex_button.clicked.connect(self.prepare_codex_runtime)
+        topbar_layout.addWidget(self.prepare_codex_button)
+
+        self.login_codex_button = set_secondary(QPushButton(ui_text("完成登录", "Complete Login", self.language)))
+        self.login_codex_button.clicked.connect(self.open_codex_login)
+        topbar_layout.addWidget(self.login_codex_button)
+
         open_runtime_button = set_secondary(QPushButton(ui_text("打开运行目录", "Open Runtime", self.language)))
         open_runtime_button.clicked.connect(lambda: open_local_path(runtime_project_root()))
         topbar_layout.addWidget(open_runtime_button)
@@ -2432,6 +2459,7 @@ class ResearchAssistantWindow(QMainWindow):
         self.nav_list.currentRowChanged.connect(self._on_page_changed)
         self.nav_list.setCurrentRow(max(0, min(current_row, self.nav_list.count() - 1)))
         self.statusBar().showMessage(f"{ui_text('工作区', 'Workspace', self.language)}: {workspace_root()}")
+        self._refresh_codex_buttons()
 
     def change_language(self, *_: Any) -> None:
         selected = self.language_combo.currentData()
@@ -2444,6 +2472,7 @@ class ResearchAssistantWindow(QMainWindow):
         update_user_preferences({"language": selected})
         self._build_ui(current_row)
         self._apply_style()
+        self._refresh_codex_surfaces()
 
     def _on_page_changed(self, row: int) -> None:
         if row < 0:
@@ -2456,6 +2485,179 @@ class ResearchAssistantWindow(QMainWindow):
         if page_key not in self.page_keys:
             return
         self.nav_list.setCurrentRow(self.page_keys.index(page_key))
+
+    def _home_page(self) -> HomePage | None:
+        if not hasattr(self, "pages") or "home" not in getattr(self, "page_keys", []):
+            return None
+        page = self.pages.widget(self.page_keys.index("home"))
+        return page if isinstance(page, HomePage) else None
+
+    def _refresh_codex_surfaces(self, *, refresh_home: bool = True) -> None:
+        if refresh_home:
+            home_page = self._home_page()
+            if home_page is not None:
+                home_page.refresh()
+        self._refresh_codex_buttons()
+
+    def _refresh_codex_buttons(self) -> None:
+        if not hasattr(self, "prepare_codex_button") or not hasattr(self, "login_codex_button"):
+            return
+
+        codex = detect_codex_cli(refresh=True, language=self.language)
+        preparing = bool(self._codex_prepare_worker and self._codex_prepare_worker.isRunning())
+
+        if preparing:
+            self.prepare_codex_button.setEnabled(False)
+            self.prepare_codex_button.setText(ui_text("准备中...", "Preparing...", self.language))
+        else:
+            self.prepare_codex_button.setEnabled(sys.platform == "darwin")
+            self.prepare_codex_button.setText(
+                ui_text("修复 Codex", "Repair Codex", self.language)
+                if codex.available
+                else ui_text("准备 Codex", "Prepare Codex", self.language)
+            )
+
+        if codex.can_execute:
+            self.login_codex_button.setEnabled(False)
+            self.login_codex_button.setText(ui_text("已登录", "Logged In", self.language))
+        elif codex.available:
+            self.login_codex_button.setEnabled(not preparing)
+            self.login_codex_button.setText(ui_text("完成登录", "Complete Login", self.language))
+        else:
+            self.login_codex_button.setEnabled(False)
+            self.login_codex_button.setText(ui_text("等待 Codex", "Waiting For Codex", self.language))
+
+    def _auto_prepare_codex_if_needed(self) -> None:
+        if sys.platform != "darwin" or not is_frozen_app():
+            return
+        if self._codex_prepare_worker and self._codex_prepare_worker.isRunning():
+            return
+        if not should_auto_prepare(current_version()):
+            return
+        codex = detect_codex_cli(refresh=True, language=self.language)
+        if codex.can_execute:
+            self._refresh_codex_buttons()
+            return
+        mark_auto_prepare_attempt(current_version())
+        if codex.available:
+            self._start_codex_login(auto=True)
+            return
+        self._start_codex_prepare(auto=True)
+
+    def prepare_codex_runtime(self) -> None:
+        self._start_codex_prepare(auto=False)
+
+    def _start_codex_prepare(self, *, auto: bool) -> None:
+        if self._codex_prepare_worker and self._codex_prepare_worker.isRunning():
+            return
+        self._auto_codex_prepare = auto
+        self.prepare_codex_button.setEnabled(False)
+        self.prepare_codex_button.setText(ui_text("准备中...", "Preparing...", self.language))
+        self.statusBar().showMessage(
+            ui_text("正在准备 Codex CLI...", "Preparing Codex CLI...", self.language)
+        )
+        self._codex_prepare_worker = WorkerThread(lambda: prepare_codex_cli(language=self.language))
+        self._codex_prepare_worker.result_ready.connect(self._on_codex_prepare_result)
+        self._codex_prepare_worker.error_ready.connect(self._on_codex_prepare_error)
+        self._codex_prepare_worker.finished.connect(self._on_codex_prepare_finished)
+        self._codex_prepare_worker.start()
+
+    def _on_codex_prepare_finished(self) -> None:
+        self._codex_prepare_worker = None
+        self._refresh_codex_surfaces()
+
+    def _on_codex_prepare_result(self, payload: Any) -> None:
+        self._refresh_codex_surfaces()
+        codex = detect_codex_cli(refresh=True, language=self.language)
+        message = str(payload.get("message") or ui_text("Codex CLI 已准备完成。", "Codex CLI is ready.", self.language))
+        notes = [str(item).strip() for item in payload.get("notes") or [] if str(item).strip()]
+        detail_text = "\n".join([message, *[f"- {item}" for item in notes]]).strip()
+
+        if codex.can_execute:
+            if not self._auto_codex_prepare:
+                QMessageBox.information(self, ui_text("Codex 已就绪", "Codex Ready", self.language), detail_text or message)
+            self.statusBar().showMessage(message)
+            return
+
+        login_hint = ui_text(
+            "接下来会打开 Codex 登录终端，请完成一次授权。",
+            "The app will now open a Codex login terminal for one-time authorization.",
+            self.language,
+        )
+        if not self._auto_codex_prepare:
+            joined = "\n\n".join(part for part in [detail_text, login_hint] if part)
+            QMessageBox.information(self, ui_text("Codex 需要登录", "Codex Login Required", self.language), joined)
+        self.statusBar().showMessage(login_hint)
+        self._start_codex_login(auto=True)
+
+    def _on_codex_prepare_error(self, trace: str) -> None:
+        self._refresh_codex_surfaces()
+        message = ui_text("准备 Codex CLI 失败。", "Failed to prepare Codex CLI.", self.language)
+        QMessageBox.warning(self, ui_text("Codex 准备失败", "Codex Prepare Failed", self.language), f"{message}\n\n{trace}")
+        self.statusBar().showMessage(message)
+
+    def open_codex_login(self) -> None:
+        self._start_codex_login(auto=False)
+
+    def _start_codex_login(self, *, auto: bool) -> None:
+        codex = detect_codex_cli(refresh=True, language=self.language)
+        if not codex.available:
+            message = ui_text("尚未检测到 Codex CLI，请先点击“准备 Codex”。", "Codex CLI is not available yet. Prepare it first.", self.language)
+            QMessageBox.information(self, ui_text("Codex 登录", "Codex Login", self.language), message)
+            self.statusBar().showMessage(message)
+            return
+        try:
+            payload = open_codex_login_terminal(language=self.language, executable=codex.executable)
+        except Exception:
+            trace = traceback.format_exc()
+            message = ui_text("打开 Codex 登录终端失败。", "Failed to open the Codex login terminal.", self.language)
+            QMessageBox.warning(self, ui_text("Codex 登录", "Codex Login", self.language), f"{message}\n\n{trace}")
+            self.statusBar().showMessage(message)
+            return
+
+        self._codex_login_notice_pending = not auto
+        self._codex_login_poll_remaining = 60
+        self._codex_login_poll_timer.start()
+        self._refresh_codex_buttons()
+
+        message = str(payload.get("message") or ui_text("已打开 Codex 登录终端。", "Opened the Codex login terminal.", self.language))
+        if not auto:
+            script_path = str(payload.get("login_script_path") or "").strip()
+            lines = [
+                message,
+                "",
+                ui_text("完成授权后回到桌面端，应用会自动刷新 Codex 状态。", "Return to the desktop app after authorization. The app will refresh Codex status automatically.", self.language),
+            ]
+            if script_path:
+                lines.extend(["", f"{ui_text('脚本路径', 'Script Path', self.language)}: {script_path}"])
+            QMessageBox.information(self, ui_text("Codex 登录", "Codex Login", self.language), "\n".join(lines))
+        self.statusBar().showMessage(message)
+
+    def _poll_codex_login_status(self) -> None:
+        if self._codex_login_poll_remaining <= 0:
+            self._codex_login_poll_timer.stop()
+            self._codex_login_notice_pending = False
+            self._refresh_codex_surfaces()
+            return
+
+        self._codex_login_poll_remaining -= 1
+        codex = detect_codex_cli(refresh=True, language=self.language)
+        self._refresh_codex_surfaces(refresh_home=False)
+        if not codex.can_execute:
+            return
+
+        self._codex_login_poll_timer.stop()
+        self._codex_login_poll_remaining = 0
+        self._refresh_codex_surfaces()
+        message = ui_text(
+            "Codex 登录已完成，研究类页面现在可以直接执行。",
+            "Codex login is complete. Research tasks can now run directly.",
+            self.language,
+        )
+        if self._codex_login_notice_pending:
+            QMessageBox.information(self, ui_text("Codex 已就绪", "Codex Ready", self.language), message)
+        self._codex_login_notice_pending = False
+        self.statusBar().showMessage(message)
 
     def check_app_update(self) -> None:
         self._start_update_check(silent=False)

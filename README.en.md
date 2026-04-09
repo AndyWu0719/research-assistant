@@ -4,7 +4,7 @@
 
 > Current Version: `Version 1.0.0`
 
-`research-assistant` is a local desktop research workstation. The desktop UI handles task configuration, local status, result review, and update prompts; the real execution is performed by a local `Codex CLI`; GitHub Releases is the default update source.
+`research-assistant` is a local desktop research workstation. The desktop UI handles task configuration, local status, result review, and update prompts; the real execution is performed by a local `Codex CLI`; packaged macOS installs automatically prepare the local Codex CLI runtime on first launch; GitHub Releases is the default update source.
 
 This project is not a browser shell and not a prompt-only wrapper.
 
@@ -30,6 +30,7 @@ flowchart LR
 
 - Configure research tasks locally
 - Execute real tasks through local `Codex CLI`
+- Automatically prepare `Codex CLI` on first launch of the macOS installer, with no manual Codex installation step
 - Read back Markdown and JSON outputs
 - Manage local recurring automations
 - Build macOS `.app` / `.pkg`
@@ -84,6 +85,7 @@ Development mode:
 Packaged mode:
 
 - macOS syncs to `~/Library/Application Support/Research Assistant/workspace` on first launch
+- If `Codex CLI` is missing, macOS also prepares an app-managed Node.js / Codex CLI runtime under `~/Library/Application Support/Research Assistant/runtime/codex/`
 - Windows syncs to `%LOCALAPPDATA%\\Research Assistant\\workspace` on first launch
 - User configs, automation state, and outputs are written there
 
@@ -105,7 +107,14 @@ python scripts/bootstrap.py
 
 ## Codex CLI Requirement
 
-Research tasks depend on a local `Codex CLI`.
+Research tasks still depend on a local `Codex CLI`, but packaged macOS builds now include the bootstrap flow, so users **no longer need to install Codex CLI manually**.
+
+Current macOS installer behavior:
+
+- It checks for an existing system `codex` first
+- If none is found, it prepares a usable Node.js / npm runtime and installs `Codex CLI` into an app-managed directory
+- If login has not been completed yet, it opens a terminal and runs `codex login`
+- In practice, the manual "install Codex CLI yourself" step is gone on macOS; users usually only need to finish one authorization flow
 
 Recommended checks:
 
@@ -117,6 +126,7 @@ codex login status
 Current behavior:
 
 - The app first tries the current `PATH`
+- It also probes the app-managed `Codex CLI`
 - On macOS GUI launches, it also probes common install paths
 - If `codex login status` is usable, the desktop app invokes the local CLI directly
 

@@ -4,7 +4,7 @@
 
 > 当前版本: `Version 1.0.0`
 
-`research-assistant` 是一个本地桌面研究工作台。桌面 UI 负责参数配置、状态展示、结果回读和更新提示；真实任务执行由本地 `Codex CLI` 完成；GitHub Releases 作为默认更新源。
+`research-assistant` 是一个本地桌面研究工作台。桌面 UI 负责参数配置、状态展示、结果回读和更新提示；真实任务执行由本地 `Codex CLI` 完成；macOS 安装包会在首次启动时自动准备本地 Codex CLI 运行环境；GitHub Releases 作为默认更新源。
 
 这不是浏览器套壳，也不是只生成 prompt 的外壳。
 
@@ -30,6 +30,7 @@ flowchart LR
 
 - 本地配置研究任务
 - 通过本地 `Codex CLI` 执行真实任务
+- macOS 安装包首次启动自动准备 `Codex CLI`，无需手工安装
 - 回读 Markdown 与 JSON 结果
 - 管理本地自动化任务
 - 构建 macOS `.app` / `.pkg`
@@ -84,6 +85,7 @@ research-assistant/
 打包态：
 
 - macOS 首次启动会同步到 `~/Library/Application Support/Research Assistant/workspace`
+- 若系统未安装 `Codex CLI`，macOS 首次启动还会在 `~/Library/Application Support/Research Assistant/runtime/codex/` 下准备应用托管的 Node.js / Codex CLI 运行时
 - Windows 首次启动会同步到 `%LOCALAPPDATA%\\Research Assistant\\workspace`
 - 用户配置、自动化状态和输出结果都写入对应工作区
 
@@ -105,7 +107,14 @@ python scripts/bootstrap.py
 
 ## Codex CLI 依赖
 
-研究任务依赖本地 `Codex CLI`。
+研究任务依赖本地 `Codex CLI`，但 macOS 打包态已经内置自动准备流程，因此用户**不需要手工安装 Codex CLI**。
+
+macOS 安装包当前行为：
+
+- 首次启动优先探测系统里已有的 `codex`
+- 若缺失，会自动准备可用的 Node.js / npm，并把 `Codex CLI` 安装到应用托管目录
+- 若尚未登录，会自动打开终端执行 `codex login`
+- 因此当前 macOS 安装体验已经免掉“自行安装 Codex CLI”这一步；通常只需要完成一次登录授权
 
 推荐检查：
 
@@ -117,6 +126,7 @@ codex login status
 当前行为：
 
 - 程序优先读取当前 `PATH`
+- 也会探测应用托管的 `Codex CLI`
 - macOS GUI 启动时也会探测常见安装路径
 - 若 `codex login status` 可用，桌面端会直接调用本地 CLI
 

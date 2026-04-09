@@ -21,8 +21,8 @@ PAGE_COPY = {
         "nav_label": {"zh-CN": "首页", "en-US": "Home"},
         "title": {"zh-CN": "本地研究助手", "en-US": "Research Assistant"},
         "caption": {
-            "zh-CN": "桌面应用负责参数配置、执行与结果查看，本地 Codex CLI 负责真实研究任务；周期任务默认由本地调度器承担。",
-            "en-US": "The desktop app handles inputs, execution, and result review, while the local Codex CLI runs the real research tasks. Recurring runs default to the local scheduler.",
+            "zh-CN": "桌面应用负责参数配置、执行与结果查看；macOS 安装包首次启动会自动准备本地 Codex CLI，真实研究任务仍由本地 CLI 执行；周期任务默认由本地调度器承担。",
+            "en-US": "The desktop app handles inputs, execution, and result review. On packaged macOS installs, the first launch automatically prepares the local Codex CLI, while the CLI still performs the real research tasks. Recurring runs default to the local scheduler.",
         },
     },
     "literature_scout": {

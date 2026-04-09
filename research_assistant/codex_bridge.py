@@ -4,7 +4,6 @@ import contextlib
 import importlib.util
 import io
 import json
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -15,6 +14,7 @@ from typing import Any
 import yaml
 
 from research_assistant.config_store import OUTPUTS_DIR, ROOT, ensure_project_layout, load_user_preferences, now_iso, resolve_quality_profile
+from research_assistant.codex_setup import is_managed_codex_executable, resolve_codex_executable
 from research_assistant.file_naming import prompt_request_path
 from research_assistant.language import normalize_language
 from research_assistant.pdf_extractor import extract_pdf_text
@@ -267,24 +267,6 @@ def _load_paper_fetcher_module() -> Any:
     return module
 
 
-def _resolve_codex_executable() -> str | None:
-    executable = shutil.which("codex")
-    if executable:
-        return executable
-
-    candidates = [
-        Path("/opt/homebrew/bin/codex"),
-        Path("/usr/local/bin/codex"),
-        Path.home() / ".local/bin/codex",
-        Path.home() / ".npm-global/bin/codex",
-        Path.home() / ".nvm/versions/node/current/bin/codex",
-    ]
-    for candidate in candidates:
-        if candidate.exists() and candidate.is_file():
-            return str(candidate)
-    return None
-
-
 def _invoke_paper_fetch(task_input: PaperFetcherInput, target_dir: str) -> dict[str, Any]:
     module = _load_paper_fetcher_module()
     argv = [
@@ -316,7 +298,7 @@ def detect_codex_cli(refresh: bool = False, language: str | None = None) -> Code
     if lang in _CODEX_STATUS_CACHE and not refresh:
         return _CODEX_STATUS_CACHE[lang]
 
-    executable = _resolve_codex_executable()
+    executable = resolve_codex_executable()
     if not executable:
         _CODEX_STATUS_CACHE[lang] = CodexCLIStatus(
             available=False,
@@ -333,6 +315,12 @@ def detect_codex_cli(refresh: bool = False, language: str | None = None) -> Code
                 else "网页仍可使用 PDF 下载和配置管理，但研究类页面会退回手动桥接。"
             ],
         )
+        if sys.platform == "darwin":
+            _CODEX_STATUS_CACHE[lang].notes.append(
+                "On macOS packaged installs, the app can bootstrap Codex CLI automatically on first launch."
+                if is_english(lang)
+                else "在 macOS 安装包中，应用会在首次启动时自动准备 Codex CLI。"
+            )
         return _CODEX_STATUS_CACHE[lang]
 
     version = None
@@ -342,6 +330,12 @@ def detect_codex_cli(refresh: bool = False, language: str | None = None) -> Code
         if is_english(lang)
         else "Codex CLI 不需要常驻后台进程；网页会按需调用 `codex exec`。"
     ]
+    if is_managed_codex_executable(executable):
+        notes.append(
+            "This Codex CLI is managed by Research Assistant, so manual installation is not required."
+            if is_english(lang)
+            else "当前 Codex CLI 由 Research Assistant 托管，无需手工安装。"
+        )
     try:
         version_process = subprocess.run(
             [executable, "--version"],
