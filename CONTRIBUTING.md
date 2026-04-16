@@ -18,6 +18,12 @@ Launch the macOS baseline locally:
 python MacOS/desktop/main.py
 ```
 
+Preferred contribution target:
+
+- put product changes into `MacOS/` first, because it is the verified baseline
+- mirror intentionally into `Windows/` when the behavior should stay symmetric
+- do not touch the root legacy tree unless you are explicitly maintaining compatibility or preparing retirement work
+
 ## Before Opening A Pull Request
 
 Please keep changes focused and include the following checks when relevant:
@@ -32,6 +38,7 @@ If your change affects packaging:
 - verify the documented build command still works
 - update `README.md` and `README.en.md` when user-facing behavior changes
 - keep `MacOS/` and `Windows/` subtree changes aligned when behavior should stay symmetric
+- if you modify the root legacy tree, explain why it still needs to exist and why the change cannot live only under `MacOS/` / `Windows/`
 
 ## Pull Request Expectations
 

@@ -5,11 +5,11 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Release version, for example 1.0.0
+        description: Release version, for example 1.1.0
         required: false
         default: ""
       release_tag:
-        description: Release tag containing the Windows installer, for example Version-1.0.0-2026.3.27
+        description: Release tag containing the Windows installer, for example v1.1.0
         required: false
         default: ""
   push:
@@ -44,14 +44,14 @@ jobs:
           git fetch --tags --force
 
           if (-not $releaseTag) {
-            $releaseTag = git tag --list "Version-*" --sort=-creatordate | Select-Object -First 1
+            $releaseTag = git tag --list "v*" --sort=-creatordate | Select-Object -First 1
           }
 
           $version = $version.Trim()
           $releaseTag = $releaseTag.Trim()
 
           if (-not $releaseTag) {
-            throw "Missing release tag. Pass workflow_dispatch input `release_tag`, or ensure the repository already has a `Version-*` tag."
+            throw "Missing release tag. Pass workflow_dispatch input `release_tag`, or ensure the repository already has a `v*` tag."
           }
 
           if (-not $version) {
