@@ -17,10 +17,7 @@ on:
       - main
     paths:
       - ".github/workflows/validate-windows-installer-ui.yml"
-      - "packaging/windows/validate_installed_app.ps1"
-      - "desktop/**"
-      - "research_assistant/**"
-      - "packaging/windows/**"
+      - "Windows/**"
 
 permissions:
   contents: read
@@ -125,7 +122,7 @@ jobs:
           $screenshotPath = Join-Path $artifactDir "research-assistant-windows-ui.png"
           $summaryPath = Join-Path $artifactDir "ui-validation-summary.json"
 
-          & "$env:GITHUB_WORKSPACE\packaging\windows\validate_installed_app.ps1" `
+          & "$env:GITHUB_WORKSPACE\Windows\packaging\windows\validate_installed_app.ps1" `
             -ExePath $env:APP_EXE_PATH `
             -ScreenshotPath $screenshotPath `
             -SummaryPath $summaryPath `
@@ -137,13 +134,13 @@ jobs:
 
           ## Verdict
 
-          The Windows desktop build uses the same main window class, page structure, and stylesheet-driven layout as the macOS build, so the interface is functionally aligned with macOS.
+          The Windows desktop build currently mirrors the macOS subtree structure and UI implementation, so the interface remains functionally aligned with macOS during the split.
 
           ## Same parts
 
-          - `desktop/main.py` launches the same `ResearchAssistantWindow`.
-          - `desktop/app.py` defines one shared page tree and one shared Qt stylesheet.
-          - Research flows, navigation structure, top bar, sidebar, version badge, update entry, and result pages are shared across platforms.
+          - `Windows/desktop/main.py` launches the same `ResearchAssistantWindow` shape as the macOS baseline.
+          - `Windows/desktop/app.py` mirrors the page tree and stylesheet now preserved under `MacOS/desktop/app.py`.
+          - Research flows, navigation structure, top bar, sidebar, version badge, update entry, and result pages remain aligned by duplicated symmetry.
 
           ## Expected differences
 
@@ -153,7 +150,7 @@ jobs:
 
           ## Validation scope
 
-          This run validated the released Windows installer by downloading the `.exe`, performing a silent install, launching the installed app, and capturing a runner screenshot.
+          This run validated the released Windows installer by downloading the `.exe`, performing a silent install, launching the installed app, and capturing a runner screenshot against the duplicated Windows subtree.
           "@ | Set-Content -Path $analysisPath -Encoding UTF8
 
           @"
@@ -165,7 +162,7 @@ jobs:
           - Install dir: `$env:INSTALL_DIR`
           - Workspace dir: `$env:WORKSPACE_DIR`
           - Screenshot artifact: `windows-ui-validation`
-          - Parity verdict: same shared UI shell and workflow structure as macOS, with expected OS-level font and window chrome differences.
+          - Parity verdict: mirrored UI and workflow structure with the macOS subtree, with expected OS-level font and window chrome differences.
           "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 
       - name: Upload validation artifact

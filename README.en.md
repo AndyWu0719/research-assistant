@@ -46,7 +46,8 @@ flowchart LR
 
 Notes:
 
-- macOS and Windows reuse the same desktop shell and page layout.
+- The repository now uses two mirrored OS-specific subtrees: `MacOS/` and `Windows/`.
+- `MacOS/` is the preserved, verified baseline in this migration stage, and `Windows/` mirrors it structurally.
 - The Windows installer defaults to `%LOCALAPPDATA%\\Programs\\Research Assistant` and keeps the user workspace outside the install directory.
 
 ## Project Structure
@@ -54,33 +55,39 @@ Notes:
 ```text
 research-assistant/
 ├── .github/workflows/
-├── desktop/
-├── research_assistant/
-├── configs/
-├── outputs/
-├── packaging/
-│   ├── macos/
-│   └── windows/
-├── scripts/
-├── skills/
+├── MacOS/
+│   ├── desktop/
+│   ├── research_assistant/
+│   ├── configs/
+│   ├── outputs/
+│   ├── packaging/
+│   ├── scripts/
+│   └── skills/
+├── Windows/
+│   ├── desktop/
+│   ├── research_assistant/
+│   ├── configs/
+│   ├── outputs/
+│   ├── packaging/
+│   ├── scripts/
+│   └── skills/
 ├── README.md
 └── README.en.md
 ```
 
 Directory responsibilities:
 
-- `desktop/`: desktop shell, pages, layout, and entry points
-- `research_assistant/`: execution bridge, prompt building, config management, result loading, update checks
-- `configs/`: default configs, automation configs, update configs
-- `outputs/`: generated reports, downloads, prompt requests, smoke test reports
-- `packaging/`: runtime dependencies, build dependencies, macOS / Windows packaging scripts
-- `scripts/`: local launch, automation, packaging, smoke verification
+- `MacOS/`: current verified macOS baseline for local execution, packaging, and signing
+- `Windows/`: mirrored Windows subtree for CI builds and future Windows-specific work
+- repository root: docs, workflows, and the temporary migration compatibility baseline
 
 ## Runtime Workspace
 
 Development mode:
 
-- The current repository is used directly as the workspace
+- Use `MacOS/` as the preferred macOS workspace
+- Use `Windows/` as the preferred Windows workspace
+- The old root-level tree is still kept temporarily as a migration compatibility baseline
 
 Packaged mode:
 
@@ -96,14 +103,14 @@ Packaged mode:
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-python desktop/main.py
+python -m pip install -r MacOS/requirements.txt
+python MacOS/desktop/main.py
 ```
 
 Alternative launcher:
 
 ```bash
-python scripts/bootstrap.py
+python MacOS/scripts/bootstrap.py
 ```
 
 ## Codex CLI Requirement
@@ -136,19 +143,19 @@ Current behavior:
 Check status:
 
 ```bash
-python desktop/main.py --status
+python MacOS/desktop/main.py --status
 ```
 
 Force-run the active automation:
 
 ```bash
-python scripts/run_automation.py --active-only --force
+python MacOS/scripts/run_automation.py --active-only --force
 ```
 
 Start the local scheduler:
 
 ```bash
-python scripts/run_automation.py --daemon
+python MacOS/scripts/run_automation.py --daemon
 ```
 
 ## Build Installers
@@ -156,8 +163,8 @@ python scripts/run_automation.py --daemon
 Install dependencies first:
 
 ```bash
-python -m pip install -r requirements.txt
-python -m pip install -r packaging/requirements-build.txt
+python -m pip install -r MacOS/requirements.txt
+python -m pip install -r MacOS/packaging/requirements-build.txt
 ```
 
 ### macOS
@@ -165,20 +172,20 @@ python -m pip install -r packaging/requirements-build.txt
 Build:
 
 ```bash
-python scripts/build_installer.py --platform macos --version 1.0.0
+python MacOS/scripts/build_installer.py --platform macos --version 1.0.0
 ```
 
 Artifacts:
 
-- `dist/installers/macos/pyinstaller/Research Assistant.app`
-- `dist/installers/macos/ResearchAssistant-macos-1.0.0.pkg`
+- `MacOS/dist/installers/macos/pyinstaller/Research Assistant.app`
+- `MacOS/dist/installers/macos/ResearchAssistant-macos-1.0.0.pkg`
 
 Signing and notarization:
 
 ```bash
-source packaging/macos/signing.env
-bash packaging/macos/store_notary_credentials.sh
-python packaging/macos/sign_and_notarize.py --version 1.0.0
+source MacOS/packaging/macos/signing.env
+bash MacOS/packaging/macos/store_notary_credentials.sh
+python MacOS/packaging/macos/sign_and_notarize.py --version 1.0.0
 ```
 
 ### Windows
@@ -191,21 +198,21 @@ Hard constraints:
 Local build prep:
 
 ```powershell
-python -m pip install -r requirements.txt
-python -m pip install -r packaging/requirements-build.txt
+python -m pip install -r Windows/requirements.txt
+python -m pip install -r Windows/packaging/requirements-build.txt
 winget install NSIS.NSIS
 ```
 
 Build:
 
 ```powershell
-python scripts/build_installer.py --platform windows --version 1.0.0
+python Windows/scripts/build_installer.py --platform windows --version 1.0.0
 ```
 
 Artifacts:
 
-- `dist/installers/windows/pyinstaller/Research Assistant/`
-- `dist/installers/windows/ResearchAssistant-windows-1.0.0.exe`
+- `Windows/dist/installers/windows/pyinstaller/Research Assistant/`
+- `Windows/dist/installers/windows/ResearchAssistant-windows-1.0.0.exe`
 
 CI option:
 
@@ -252,7 +259,7 @@ Release flow:
 ## Validation
 
 ```bash
-python scripts/smoke_test.py
+python MacOS/scripts/smoke_test.py
 ```
 
 The current smoke test checks:
