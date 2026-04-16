@@ -39,6 +39,8 @@ jobs:
   build:
     runs-on: macos-latest
     env:
+      APPLE_SIGNING_CERT_BASE64: ${{ secrets.APPLE_SIGNING_CERT_BASE64 }}
+      APPLE_SIGNING_CERT_PASSWORD: ${{ secrets.APPLE_SIGNING_CERT_PASSWORD }}
       APPLE_DEVELOPER_ID_APPLICATION: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION }}
       APPLE_DEVELOPER_ID_INSTALLER: ${{ secrets.APPLE_DEVELOPER_ID_INSTALLER }}
       APPLE_KEYCHAIN_PROFILE: ${{ secrets.APPLE_KEYCHAIN_PROFILE }}
@@ -91,13 +93,40 @@ jobs:
         if: steps.meta.outputs.should_upload == 'true'
         shell: bash
         run: |
+          test -n "$APPLE_SIGNING_CERT_BASE64" || { echo "Missing APPLE_SIGNING_CERT_BASE64" >&2; exit 1; }
+          test -n "$APPLE_SIGNING_CERT_PASSWORD" || { echo "Missing APPLE_SIGNING_CERT_PASSWORD" >&2; exit 1; }
           test -n "$APPLE_DEVELOPER_ID_APPLICATION" || { echo "Missing APPLE_DEVELOPER_ID_APPLICATION" >&2; exit 1; }
           test -n "$APPLE_DEVELOPER_ID_INSTALLER" || { echo "Missing APPLE_DEVELOPER_ID_INSTALLER" >&2; exit 1; }
-          if [[ -z "$APPLE_KEYCHAIN_PROFILE" ]]; then
-            test -n "$APPLE_ID" || { echo "Missing APPLE_ID" >&2; exit 1; }
-            test -n "$APPLE_TEAM_ID" || { echo "Missing APPLE_TEAM_ID" >&2; exit 1; }
-            test -n "$APPLE_APP_SPECIFIC_PASSWORD" || { echo "Missing APPLE_APP_SPECIFIC_PASSWORD" >&2; exit 1; }
-          fi
+          test -n "$APPLE_ID" || { echo "Missing APPLE_ID" >&2; exit 1; }
+          test -n "$APPLE_TEAM_ID" || { echo "Missing APPLE_TEAM_ID" >&2; exit 1; }
+          test -n "$APPLE_APP_SPECIFIC_PASSWORD" || { echo "Missing APPLE_APP_SPECIFIC_PASSWORD" >&2; exit 1; }
+
+      - name: Import macOS signing certificate
+        if: steps.meta.outputs.should_upload == 'true'
+        shell: bash
+        run: |
+          CERT_PATH="$RUNNER_TEMP/apple-signing-cert.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/research-assistant-build.keychain-db"
+          KEYCHAIN_PASSWORD="$(python -c 'import secrets; print(secrets.token_urlsafe(24))')"
+
+          echo "$APPLE_SIGNING_CERT_BASE64" | base64 --decode > "$CERT_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security default-keychain -s "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -k "$KEYCHAIN_PATH" -P "$APPLE_SIGNING_CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/productsign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+
+          PROFILE="${APPLE_KEYCHAIN_PROFILE:-research-assistant-notary}"
+          xcrun notarytool store-credentials "$PROFILE" \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD"
+
+          echo "APPLE_KEYCHAIN_PROFILE=$PROFILE" >> "$GITHUB_ENV"
 
       - name: Build unsigned macOS artifact
         if: steps.meta.outputs.should_upload != 'true'
