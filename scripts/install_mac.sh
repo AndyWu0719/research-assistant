@@ -2,6 +2,11 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$ROOT"
+TARGET="$ROOT/MacOS/scripts/install_mac.sh"
 
-python3 scripts/bootstrap.py "$@"
+if [[ ! -f "$TARGET" ]]; then
+  echo "Missing compatibility target: $TARGET" >&2
+  exit 1
+fi
+
+exec bash "$TARGET" "$@"

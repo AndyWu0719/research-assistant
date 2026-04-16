@@ -1,1 +1,1 @@
-"""Native desktop application entrypoints for Research Assistant."""
+"""Thin compatibility entrypoints for the root desktop launcher."""

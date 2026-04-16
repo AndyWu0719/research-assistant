@@ -17,9 +17,18 @@ APP_NAME = "Research Assistant"
 PACKAGE_ID = "com.andywu.research-assistant"
 
 
+def repo_default_version() -> str:
+    for candidate in (ROOT.parent / "VERSION", ROOT / "VERSION"):
+        if candidate.exists():
+            value = candidate.read_text(encoding="utf-8").strip()
+            if value:
+                return value
+    return "1.0.0"
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build, sign, and notarize the macOS Research Assistant installer.")
-    parser.add_argument("--version", default="1.0.0")
+    parser.add_argument("--version", default=repo_default_version())
     parser.add_argument("--skip-build", action="store_true", help="Reuse an existing built app instead of rebuilding.")
     parser.add_argument("--app-path", help="Path to an existing .app bundle when --skip-build is used.")
     parser.add_argument("--skip-notarize", action="store_true", help="Only sign the app/pkg, do not submit for notarization.")

@@ -11,7 +11,7 @@ SetCompressor /SOLID lzma
   !define APP_EXE_NAME "Research Assistant.exe"
 !endif
 !ifndef APP_VERSION
-  !define APP_VERSION "1.0.0"
+  !error "Missing /DAPP_VERSION=<app version>"
 !endif
 !ifndef APP_DIR
   !error "Missing /DAPP_DIR=<PyInstaller output dir>"

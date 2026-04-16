@@ -2,7 +2,9 @@
 
 [简体中文](README.md) | [English](README.en.md)
 
-> Release Status: `v1.1.0` has been published
+> Version source: root `VERSION` (currently `1.1.1`)
+>
+> Latest published release: `v1.1.0`
 
 `research-assistant` is a local desktop research workstation. The desktop UI handles task configuration, local status, result review, and update prompts; the real execution is performed by a local `Codex CLI`; packaged macOS and Windows installs automatically prepare the local Codex CLI runtime on first launch; GitHub Releases is the default update source.
 
@@ -55,6 +57,7 @@ Notes:
 ```text
 research-assistant/
 ├── .github/workflows/
+├── VERSION
 ├── MacOS/
 │   ├── desktop/
 │   ├── research_assistant/
@@ -71,6 +74,15 @@ research-assistant/
 │   ├── packaging/
 │   ├── scripts/
 │   └── skills/
+├── desktop/
+│   └── main.py
+├── scripts/
+│   ├── bootstrap.py
+│   ├── build_installer.py
+│   ├── run_automation.py
+│   ├── smoke_test.py
+│   └── install_mac.sh
+├── requirements.txt
 ├── README.md
 └── README.en.md
 ```
@@ -79,30 +91,34 @@ Directory responsibilities:
 
 - `MacOS/`: current verified macOS baseline for local execution, packaging, and signing
 - `Windows/`: mirrored Windows subtree for CI builds and future Windows-specific work
-- repository root: docs, workflows, and the temporary migration compatibility baseline
+- repository root: docs, workflows, a unified version source, and the minimal compatibility entrypoints
 
-The root still retains a compatibility layer made of:
+The root has now been reduced to a thin compatibility layer that keeps only these entrypoints:
 
-- `desktop/`
-- `research_assistant/`
-- `configs/`
-- `outputs/`
-- `packaging/`
-- `scripts/`
-- `skills/`
+- `desktop/main.py`
+- `scripts/bootstrap.py`
+- `scripts/build_installer.py`
+- `scripts/run_automation.py`
+- `scripts/smoke_test.py`
+- `scripts/install_mac.sh`
 - `requirements.txt`
-- `AGENTS.md`
 
-These legacy root directories are not the official primary entrypoints anymore. They are still kept because:
+These compatibility entrypoints only forward execution into `MacOS/` or `Windows/`; they no longer contain the full implementation.
 
-- the `v1.1.0` release notes still describe the root runtime tree as the migration-time compatibility baseline
-- they still act as a rollback anchor while the subtree structure settles
+Duplicate implementations now retired from the root tree:
 
-Retirement conditions:
+- `research_assistant/`
+- `packaging/`
+- `skills/`
+- `desktop/app.py`
+- `desktop/runtime.py`
+- tracked default templates under root `configs/`
+- tracked placeholder files under root `outputs/`
 
-1. the compatibility-layer role is stably documented
-2. `MacOS/` and `Windows/` continue to serve as the only official entrypoints
-3. no release or documentation promise still requires keeping the root runtime tree
+Notes:
+
+- historical local root `configs/` / `outputs/` data may still exist on disk from older runs, but those are no longer the tracked implementation source
+- the official implementation and build chain now live only in `MacOS/` and `Windows/`
 
 ## Runtime Workspace
 
@@ -110,7 +126,7 @@ Development mode:
 
 - Use `MacOS/` as the preferred macOS workspace
 - Use `Windows/` as the preferred Windows workspace
-- The old root-level tree is still kept temporarily as a migration compatibility baseline, but it is no longer the preferred place for new work
+- The root now acts only as a thin compatibility layer; it is no longer the preferred place for development
 
 Packaged mode:
 
@@ -134,6 +150,13 @@ Alternative launcher:
 
 ```bash
 python MacOS/scripts/bootstrap.py
+```
+
+Compatibility entrypoints still work, but they only forward execution:
+
+```bash
+python desktop/main.py
+python scripts/bootstrap.py
 ```
 
 ## Codex CLI Requirement
@@ -190,25 +213,31 @@ python -m pip install -r MacOS/requirements.txt
 python -m pip install -r MacOS/packaging/requirements-build.txt
 ```
 
+Version source:
+
+- the default version now comes from the root `VERSION` file
+- current value: `1.1.1`
+- `--version <version>` still overrides it when needed
+
 ### macOS
 
 Build:
 
 ```bash
-python MacOS/scripts/build_installer.py --platform macos --version <version>
+python MacOS/scripts/build_installer.py --platform macos
 ```
 
 Artifacts:
 
 - `MacOS/dist/installers/macos/pyinstaller/Research Assistant.app`
-- `MacOS/dist/installers/macos/ResearchAssistant-macos-<version>.pkg`
+- `MacOS/dist/installers/macos/ResearchAssistant-macos-1.1.1.pkg`
 
 Signing and notarization:
 
 ```bash
 source MacOS/packaging/macos/signing.env
 bash MacOS/packaging/macos/store_notary_credentials.sh
-python MacOS/packaging/macos/sign_and_notarize.py --version <version>
+python MacOS/packaging/macos/sign_and_notarize.py
 ```
 
 ### Windows
@@ -229,18 +258,20 @@ winget install NSIS.NSIS
 Build:
 
 ```powershell
-python Windows/scripts/build_installer.py --platform windows --version <version>
+python Windows/scripts/build_installer.py --platform windows
 ```
 
 Artifacts:
 
 - `Windows/dist/installers/windows/pyinstaller/Research Assistant/`
-- `Windows/dist/installers/windows/ResearchAssistant-windows-<version>.exe`
+- `Windows/dist/installers/windows/ResearchAssistant-windows-1.1.1.exe`
 
 CI option:
 
 - Workflow file: `.github/workflows/build-windows-installer.yml`
-- It supports manual dispatch and tag-based builds on `v*`
+- Tag pushes on `v*` build and upload the Windows installer
+- Ordinary pushes to `main` now build workflow artifacts without uploading to the latest release by default
+- Manual dispatch prefers the root `VERSION` file when `version` is omitted
 
 ## Updates
 
@@ -316,5 +347,7 @@ Reports are written to:
 - Windows installers can only be produced on native Windows or Windows CI
 - GitHub-based updates require the correct platform asset on each release
 - Public distribution still requires your own Apple / Windows signing setup
-- The legacy root runtime tree is still retained as a compatibility layer and has not been formally retired yet
-- Release tags and installer asset filenames may still diverge; today that comes from the explicit `--version` used during packaging not being fully coupled to the release tag
+- The root now exposes only a thin compatibility layer
+- Release tags should keep the `v` prefix, such as `v1.1.1`
+- The `VERSION` file stores the bare version, such as `1.1.1`
+- Default asset names now follow the version source: `ResearchAssistant-macos-1.1.1.pkg` and `ResearchAssistant-windows-1.1.1.exe`
