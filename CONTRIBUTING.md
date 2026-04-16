@@ -8,14 +8,14 @@ Thanks for contributing to `research-assistant`.
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-python -m pip install -r packaging/requirements-build.txt
+python -m pip install -r MacOS/requirements.txt
+python -m pip install -r MacOS/packaging/requirements-build.txt
 ```
 
-Launch the desktop app locally:
+Launch the macOS baseline locally:
 
 ```bash
-python desktop/main.py
+python MacOS/desktop/main.py
 ```
 
 ## Before Opening A Pull Request
@@ -23,15 +23,15 @@ python desktop/main.py
 Please keep changes focused and include the following checks when relevant:
 
 ```bash
-python -m py_compile scripts/build_installer.py research_assistant/config_store.py research_assistant/app_update.py desktop/main.py
-python scripts/smoke_test.py
+python -m py_compile MacOS/scripts/build_installer.py Windows/scripts/build_installer.py MacOS/research_assistant/config_store.py Windows/research_assistant/config_store.py MacOS/desktop/main.py Windows/desktop/main.py
+python MacOS/scripts/smoke_test.py
 ```
 
 If your change affects packaging:
 
 - verify the documented build command still works
 - update `README.md` and `README.en.md` when user-facing behavior changes
-- keep macOS and Windows packaging instructions aligned
+- keep `MacOS/` and `Windows/` subtree changes aligned when behavior should stay symmetric
 
 ## Pull Request Expectations
 

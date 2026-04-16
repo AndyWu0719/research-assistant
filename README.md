@@ -46,7 +46,7 @@ flowchart LR
 
 说明：
 
-- macOS 和 Windows 复用同一套桌面代码，功能与页面结构保持一致。
+- 当前仓库已拆分为 `MacOS/` 与 `Windows/` 两个对称子树；当前阶段以 `MacOS/` 为已验证基线，再镜像到 `Windows/`。
 - Windows 安装器默认安装到 `%LOCALAPPDATA%\\Programs\\Research Assistant`，不会覆盖用户工作区数据。
 
 ## 项目结构
@@ -54,33 +54,39 @@ flowchart LR
 ```text
 research-assistant/
 ├── .github/workflows/
-├── desktop/
-├── research_assistant/
-├── configs/
-├── outputs/
-├── packaging/
-│   ├── macos/
-│   └── windows/
-├── scripts/
-├── skills/
+├── MacOS/
+│   ├── desktop/
+│   ├── research_assistant/
+│   ├── configs/
+│   ├── outputs/
+│   ├── packaging/
+│   ├── scripts/
+│   └── skills/
+├── Windows/
+│   ├── desktop/
+│   ├── research_assistant/
+│   ├── configs/
+│   ├── outputs/
+│   ├── packaging/
+│   ├── scripts/
+│   └── skills/
 ├── README.md
 └── README.en.md
 ```
 
 目录职责：
 
-- `desktop/`: 桌面壳、页面、布局和入口
-- `research_assistant/`: 执行桥接、prompt 构建、配置管理、结果加载、更新检查
-- `configs/`: 默认配置、自动化配置、更新配置
-- `outputs/`: 结果文件、下载文件、prompt 请求、smoke test 报告
-- `packaging/`: 运行时依赖、构建依赖、macOS / Windows 打包脚本
-- `scripts/`: 本地启动、自动化、打包、smoke 验证
+- `MacOS/`: 当前 macOS 已验证基线；本地运行、打包和签名流程都从这里进入
+- `Windows/`: 与 `MacOS/` 对称的 Windows 子树；用于后续 Windows 专项演进与 CI 构建
+- root 目录：保留仓库文档、工作流和迁移期兼容基线，不在本轮直接删除原树
 
 ## 运行时工作区
 
 开发态：
 
-- 默认直接使用当前仓库作为工作区
+- macOS 推荐直接使用 `MacOS/` 子树作为工作区
+- Windows 推荐直接使用 `Windows/` 子树作为工作区
+- root 原树暂时保留为迁移期兼容基线，不建议再作为首选入口
 
 打包态：
 
@@ -96,14 +102,14 @@ research-assistant/
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-python desktop/main.py
+python -m pip install -r MacOS/requirements.txt
+python MacOS/desktop/main.py
 ```
 
 可选入口：
 
 ```bash
-python scripts/bootstrap.py
+python MacOS/scripts/bootstrap.py
 ```
 
 ## Codex CLI 依赖
@@ -136,19 +142,19 @@ codex login status
 查看状态：
 
 ```bash
-python desktop/main.py --status
+python MacOS/desktop/main.py --status
 ```
 
 强制执行当前自动化：
 
 ```bash
-python scripts/run_automation.py --active-only --force
+python MacOS/scripts/run_automation.py --active-only --force
 ```
 
 启动本地调度器：
 
 ```bash
-python scripts/run_automation.py --daemon
+python MacOS/scripts/run_automation.py --daemon
 ```
 
 ## 构建安装包
@@ -156,8 +162,8 @@ python scripts/run_automation.py --daemon
 先安装依赖：
 
 ```bash
-python -m pip install -r requirements.txt
-python -m pip install -r packaging/requirements-build.txt
+python -m pip install -r MacOS/requirements.txt
+python -m pip install -r MacOS/packaging/requirements-build.txt
 ```
 
 ### macOS
@@ -165,20 +171,20 @@ python -m pip install -r packaging/requirements-build.txt
 构建：
 
 ```bash
-python scripts/build_installer.py --platform macos --version 1.0.0
+python MacOS/scripts/build_installer.py --platform macos --version 1.0.0
 ```
 
 产物：
 
-- `dist/installers/macos/pyinstaller/Research Assistant.app`
-- `dist/installers/macos/ResearchAssistant-macos-1.0.0.pkg`
+- `MacOS/dist/installers/macos/pyinstaller/Research Assistant.app`
+- `MacOS/dist/installers/macos/ResearchAssistant-macos-1.0.0.pkg`
 
 签名与公证：
 
 ```bash
-source packaging/macos/signing.env
-bash packaging/macos/store_notary_credentials.sh
-python packaging/macos/sign_and_notarize.py --version 1.0.0
+source MacOS/packaging/macos/signing.env
+bash MacOS/packaging/macos/store_notary_credentials.sh
+python MacOS/packaging/macos/sign_and_notarize.py --version 1.0.0
 ```
 
 ### Windows
@@ -191,21 +197,21 @@ python packaging/macos/sign_and_notarize.py --version 1.0.0
 本机构建前准备：
 
 ```powershell
-python -m pip install -r requirements.txt
-python -m pip install -r packaging/requirements-build.txt
+python -m pip install -r Windows/requirements.txt
+python -m pip install -r Windows/packaging/requirements-build.txt
 winget install NSIS.NSIS
 ```
 
 构建：
 
 ```powershell
-python scripts/build_installer.py --platform windows --version 1.0.0
+python Windows/scripts/build_installer.py --platform windows --version 1.0.0
 ```
 
 产物：
 
-- `dist/installers/windows/pyinstaller/Research Assistant/`
-- `dist/installers/windows/ResearchAssistant-windows-1.0.0.exe`
+- `Windows/dist/installers/windows/pyinstaller/Research Assistant/`
+- `Windows/dist/installers/windows/ResearchAssistant-windows-1.0.0.exe`
 
 CI 方案：
 
@@ -252,7 +258,7 @@ open_download_in_browser: false
 ## 验证
 
 ```bash
-python scripts/smoke_test.py
+python MacOS/scripts/smoke_test.py
 ```
 
 当前 smoke test 会检查：
