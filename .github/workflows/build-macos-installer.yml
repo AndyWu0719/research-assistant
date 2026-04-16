@@ -1,0 +1,143 @@
+name: build-macos-installer
+run-name: build-macos-installer (${{ github.event_name }})
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Build version (for example 1.1.1)
+        required: false
+        default: ""
+      release_tag:
+        description: Existing release tag to upload into (for example v1.1.1)
+        required: false
+        default: ""
+      upload_to_release:
+        description: Upload the built installer into the resolved release
+        required: false
+        type: boolean
+        default: true
+      skip_notarize:
+        description: Build and sign only, skip notarization
+        required: false
+        type: boolean
+        default: false
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+    paths:
+      - ".github/workflows/build-macos-installer.yml"
+      - "MacOS/**"
+      - "VERSION"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-latest
+    env:
+      APPLE_DEVELOPER_ID_APPLICATION: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION }}
+      APPLE_DEVELOPER_ID_INSTALLER: ${{ secrets.APPLE_DEVELOPER_ID_INSTALLER }}
+      APPLE_KEYCHAIN_PROFILE: ${{ secrets.APPLE_KEYCHAIN_PROFILE }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve build metadata
+        id: meta
+        shell: bash
+        run: |
+          payload="$(python scripts/release_metadata.py \
+            --event-name "${{ github.event_name }}" \
+            --ref-type "${{ github.ref_type }}" \
+            --ref-name "${{ github.ref_name }}" \
+            --version "${{ github.event.inputs.version }}" \
+            --release-tag "${{ github.event.inputs.release_tag }}" \
+            --upload-to-release "${{ github.event.inputs.upload_to_release }}" )"
+          version="$(python -c 'import json,sys; print(json.loads(sys.argv[1])["version"])' "$payload")"
+          release_tag="$(python -c 'import json,sys; print(json.loads(sys.argv[1])["release_tag"])' "$payload")"
+          should_upload="$(python -c 'import json,sys; print(str(json.loads(sys.argv[1])["should_upload"]).lower())' "$payload")"
+          skip_notarize="${{ github.event.inputs.skip_notarize }}"
+          if [[ -z "$skip_notarize" ]]; then
+            skip_notarize="false"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
+          echo "should_upload=$should_upload" >> "$GITHUB_OUTPUT"
+          echo "skip_notarize=$skip_notarize" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r MacOS/requirements.txt
+          python -m pip install -r MacOS/packaging/requirements-build.txt
+
+      - name: Validate signing secrets for release uploads
+        if: steps.meta.outputs.should_upload == 'true'
+        shell: bash
+        run: |
+          test -n "$APPLE_DEVELOPER_ID_APPLICATION" || { echo "Missing APPLE_DEVELOPER_ID_APPLICATION" >&2; exit 1; }
+          test -n "$APPLE_DEVELOPER_ID_INSTALLER" || { echo "Missing APPLE_DEVELOPER_ID_INSTALLER" >&2; exit 1; }
+          if [[ -z "$APPLE_KEYCHAIN_PROFILE" ]]; then
+            test -n "$APPLE_ID" || { echo "Missing APPLE_ID" >&2; exit 1; }
+            test -n "$APPLE_TEAM_ID" || { echo "Missing APPLE_TEAM_ID" >&2; exit 1; }
+            test -n "$APPLE_APP_SPECIFIC_PASSWORD" || { echo "Missing APPLE_APP_SPECIFIC_PASSWORD" >&2; exit 1; }
+          fi
+
+      - name: Build unsigned macOS artifact
+        if: steps.meta.outputs.should_upload != 'true'
+        shell: bash
+        run: |
+          python MacOS/scripts/build_installer.py --platform macos --version "${{ steps.meta.outputs.version }}"
+
+      - name: Build signed and notarized macOS installer
+        if: steps.meta.outputs.should_upload == 'true'
+        shell: bash
+        run: |
+          if [[ "${{ steps.meta.outputs.skip_notarize }}" == "true" ]]; then
+            python MacOS/packaging/macos/sign_and_notarize.py --version "${{ steps.meta.outputs.version }}" --skip-notarize
+          else
+            python MacOS/packaging/macos/sign_and_notarize.py --version "${{ steps.meta.outputs.version }}"
+          fi
+
+      - name: Verify macOS installer trust
+        if: steps.meta.outputs.should_upload == 'true'
+        shell: bash
+        run: |
+          pkg_path="MacOS/dist/installers/macos/ResearchAssistant-macos-${{ steps.meta.outputs.version }}.pkg"
+          pkgutil --check-signature "$pkg_path"
+          if [[ "${{ steps.meta.outputs.skip_notarize }}" == "true" ]]; then
+            spctl --assess --type install --verbose=2 "$pkg_path" || true
+          else
+            spctl --assess --type install --verbose=2 "$pkg_path"
+          fi
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ResearchAssistant-macos-${{ steps.meta.outputs.version }}
+          path: MacOS/dist/installers/macos/*
+
+      - name: Upload release asset
+        if: steps.meta.outputs.should_upload == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.release_tag }}
+          files: MacOS/dist/installers/macos/ResearchAssistant-macos-${{ steps.meta.outputs.version }}.pkg
+          overwrite_files: true
+          fail_on_unmatched_files: true

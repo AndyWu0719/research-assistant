@@ -98,6 +98,46 @@ def build_windows_update_script(installer_path: Path, app_pid: int, restart_exe:
     )
 
 
+def _macos_pkg_is_trusted(pkg_path: Path) -> tuple[bool, str]:
+    signature = subprocess.run(
+        ["/usr/sbin/pkgutil", "--check-signature", str(pkg_path)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if signature.returncode != 0:
+        return False, (signature.stdout or signature.stderr or "").strip()
+    assessment = subprocess.run(
+        ["/usr/sbin/spctl", "--assess", "--type", "install", "--verbose=2", str(pkg_path)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if assessment.returncode != 0:
+        return False, (assessment.stdout or assessment.stderr or "").strip()
+    return True, (assessment.stdout or signature.stdout or "").strip()
+
+
+def _windows_installer_is_trusted(installer_path: Path) -> tuple[bool, str]:
+    escaped_path = str(installer_path).replace("'", "''")
+    command = [
+        "powershell",
+        "-NoProfile",
+        "-Command",
+        (
+            f"$sig = Get-AuthenticodeSignature -FilePath '{escaped_path}'; "
+            "Write-Output $sig.Status; "
+            "if ($sig.SignerCertificate) { Write-Output $sig.SignerCertificate.Subject }"
+        ),
+    ]
+    result = subprocess.run(command, capture_output=True, text=True, check=False)
+    output = (result.stdout or result.stderr or "").strip()
+    first_line = output.splitlines()[0].strip() if output else ""
+    if result.returncode != 0 or first_line != "Valid":
+        return False, output
+    return True, output
+
+
 def _write_launcher(text: str, suffix: str, executable: bool) -> Path:
     temp_dir = Path(tempfile.mkdtemp(prefix="research-assistant-update-"))
     path = temp_dir / f"apply-update{suffix}"
@@ -133,6 +173,17 @@ def start_in_place_update(
                 "message": _message("当前 macOS 更新仅支持 `.pkg` 安装包。", "macOS in-place updates currently support `.pkg` installers only.", language),
                 "should_exit": False,
             }
+        trusted, details = _macos_pkg_is_trusted(target)
+        if not trusted:
+            return {
+                "status": "error",
+                "message": _message(
+                    f"当前更新包未通过 macOS 签名/公证校验，已拒绝自动覆盖更新。\n\n{details}",
+                    f"The update package did not pass macOS signature/notarization checks, so in-place update was refused.\n\n{details}",
+                    language,
+                ),
+                "should_exit": False,
+            }
         bundle_path = _macos_bundle_path(current_executable)
         if bundle_path is None:
             return {
@@ -158,6 +209,17 @@ def start_in_place_update(
             return {
                 "status": "unsupported",
                 "message": _message("当前 Windows 更新仅支持 `.exe` 安装包。", "Windows in-place updates currently support `.exe` installers only.", language),
+                "should_exit": False,
+            }
+        trusted, details = _windows_installer_is_trusted(target)
+        if not trusted:
+            return {
+                "status": "error",
+                "message": _message(
+                    f"当前 Windows 更新包未通过代码签名校验，已拒绝自动覆盖更新。\n\n{details}",
+                    f"The Windows update installer did not pass code-signing verification, so in-place update was refused.\n\n{details}",
+                    language,
+                ),
                 "should_exit": False,
             }
         executable = Path(current_executable or sys.executable).expanduser().resolve()

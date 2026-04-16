@@ -183,6 +183,23 @@ codex login status
 - macOS / Windows GUI 启动时也会探测常见安装路径
 - 若 `codex login status` 可用，桌面端会直接调用本地 CLI
 
+## 应用内更新
+
+当前桌面端的 `检查更新 -> 下载并安装` 行为分两层：
+
+- 对用户可见层：
+  - 会检查 GitHub Releases 上与当前平台匹配的安装包
+  - 若检测到新版本，打包态应用会优先下载并尝试启动原地覆盖更新
+- 安全门槛层：
+  - macOS 只会对通过签名/公证校验的 `.pkg` 启动原地更新
+  - Windows 只会对通过代码签名校验的 `.exe` 启动原地更新
+  - 若安装包不受信任，桌面端会拒绝自动覆盖更新，而不是绕开系统安全模型
+
+说明：
+
+- 开发态或未打包运行时，不走原地覆盖更新，只保留下载/打开安装包行为
+- 因此“自动覆盖更新”真正可用的前提，是发布到 GitHub Release 的安装包本身已经是受信任资产
+
 ## 自动化
 
 查看状态：
@@ -239,6 +256,15 @@ bash MacOS/packaging/macos/store_notary_credentials.sh
 python MacOS/packaging/macos/sign_and_notarize.py
 ```
 
+分发要求：
+
+- 对外发布的 macOS `.pkg` 必须经过：
+  - Developer ID Application 签名
+  - Developer ID Installer 签名
+  - notarization
+- 若缺少这些步骤，Gatekeeper 仍会把下载的安装包判定为不受信任
+- 仓库中的 `build-macos-installer.yml` 现在已经为 release 场景预留了签名/公证门禁；未配置必要 secrets 时，应让发布失败，而不是继续上传 unsigned 包
+
 ### Windows
 
 硬约束：
@@ -271,6 +297,12 @@ CI 方案：
 - 推送 `v*` tag 时会构建并上传 Windows 安装包
 - 普通 `main` push 默认只构建 workflow artifact，不再默认上传到最新 release
 - 手动触发时若不显式给 `version`，会优先读取 root `VERSION`
+
+Windows 代码签名：
+
+- 对外发布的 Windows `.exe` 安装包建议经过 Authenticode 签名
+- 仓库中的 `build-windows-installer.yml` 已支持在 release 上传场景下调用签名步骤
+- 若未配置 Windows 签名证书 secrets，workflow 应阻止把 unsigned 安装包上传到 release
 
 ## 更新检查
 
@@ -350,3 +382,4 @@ Windows 安装包 UI 验证：
 - release tag 仍建议使用带前缀形式，如 `v1.1.1`
 - 版本文件 `VERSION` 使用裸版本，如 `1.1.1`
 - 默认资产名会跟随版本生成：`ResearchAssistant-macos-1.1.1.pkg` / `ResearchAssistant-windows-1.1.1.exe`
+- 若仓库尚未配置 Apple / Windows 签名凭证，新的 workflow 只能把发布门禁补齐，不能凭空生成受信任安装包

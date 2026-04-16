@@ -41,55 +41,21 @@ jobs:
 
       - name: Resolve build metadata
         id: meta
-        shell: pwsh
+        shell: bash
         run: |
-          $eventName = "${{ github.event_name }}"
-          $refType = "${{ github.ref_type }}"
-          $refName = "${{ github.ref_name }}"
-          $version = "${{ github.event.inputs.version }}"
-          $releaseTag = "${{ github.event.inputs.release_tag }}"
-          $shouldUpload = "false"
-          $versionFile = Join-Path $env:GITHUB_WORKSPACE "VERSION"
-
-          if ($eventName -eq "workflow_dispatch") {
-            if ("${{ github.event.inputs.upload_to_release }}" -eq "true") {
-              $shouldUpload = "true"
-            }
-          } elseif ($refType -eq "tag") {
-            $releaseTag = $refName
-            $shouldUpload = "true"
-          }
-
-          $version = $version.Trim()
-          $releaseTag = $releaseTag.Trim()
-
-          if (-not $version -and (Test-Path $versionFile)) {
-            $version = (Get-Content $versionFile -TotalCount 1).Trim()
-          }
-
-          if (-not $releaseTag -and $eventName -eq "workflow_dispatch" -and $shouldUpload -eq "true" -and $version) {
-            $releaseTag = "v$version"
-          }
-
-          if (-not $version) {
-            if ($refType -eq "tag" -and $refName -match "(\d+\.\d+\.\d+)") {
-              $version = $Matches[1]
-            } elseif ($releaseTag -match "(\d+\.\d+\.\d+)") {
-              $version = $Matches[1]
-            }
-          }
-
-          if (-not $version) {
-            throw "Missing version. Pass workflow_dispatch input `version`, provide a `VERSION` file, or use a tag/release name containing x.y.z."
-          }
-
-          if ($shouldUpload -eq "true" -and -not $releaseTag) {
-            throw "Missing release tag. Pass workflow_dispatch input `release_tag`, or ensure the repository already has a `v*` tag."
-          }
-
-          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "release_tag=$releaseTag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "should_upload=$shouldUpload" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          payload="$(python scripts/release_metadata.py \
+            --event-name "${{ github.event_name }}" \
+            --ref-type "${{ github.ref_type }}" \
+            --ref-name "${{ github.ref_name }}" \
+            --version "${{ github.event.inputs.version }}" \
+            --release-tag "${{ github.event.inputs.release_tag }}" \
+            --upload-to-release "${{ github.event.inputs.upload_to_release }}" )"
+          version="$(python -c 'import json,sys; print(json.loads(sys.argv[1])["version"])' "$payload")"
+          release_tag="$(python -c 'import json,sys; print(json.loads(sys.argv[1])["release_tag"])' "$payload")"
+          should_upload="$(python -c 'import json,sys; print(str(json.loads(sys.argv[1])["should_upload"]).lower())' "$payload")"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
+          echo "should_upload=$should_upload" >> "$GITHUB_OUTPUT"
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -110,6 +76,34 @@ jobs:
       - name: Build Windows installer
         shell: pwsh
         run: python Windows/scripts/build_installer.py --platform windows --version ${{ steps.meta.outputs.version }}
+
+      - name: Materialize signing certificate
+        if: steps.meta.outputs.should_upload == 'true'
+        shell: pwsh
+        env:
+          WINDOWS_SIGNING_CERT_BASE64: ${{ secrets.WINDOWS_SIGNING_CERT_BASE64 }}
+          WINDOWS_SIGNING_CERT_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERT_PASSWORD }}
+        run: |
+          if (-not $env:WINDOWS_SIGNING_CERT_BASE64) { throw "Missing WINDOWS_SIGNING_CERT_BASE64" }
+          if (-not $env:WINDOWS_SIGNING_CERT_PASSWORD) { throw "Missing WINDOWS_SIGNING_CERT_PASSWORD" }
+          $certPath = Join-Path $env:RUNNER_TEMP "windows-signing-cert.pfx"
+          [IO.File]::WriteAllBytes($certPath, [Convert]::FromBase64String($env:WINDOWS_SIGNING_CERT_BASE64))
+          "WINDOWS_SIGNING_CERT_PATH=$certPath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Sign Windows installer
+        if: steps.meta.outputs.should_upload == 'true'
+        shell: pwsh
+        env:
+          WINDOWS_SIGNING_CERT_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERT_PASSWORD }}
+          WINDOWS_SIGNING_TIMESTAMP_URL: ${{ secrets.WINDOWS_SIGNING_TIMESTAMP_URL }}
+        run: |
+          $installer = "Windows/dist/installers/windows/ResearchAssistant-windows-${{ steps.meta.outputs.version }}.exe"
+          $timestamp = if ($env:WINDOWS_SIGNING_TIMESTAMP_URL) { $env:WINDOWS_SIGNING_TIMESTAMP_URL } else { "http://timestamp.digicert.com" }
+          & "$env:GITHUB_WORKSPACE\Windows\packaging\windows\sign_installer.ps1" `
+            -InstallerPath $installer `
+            -CertificatePath $env:WINDOWS_SIGNING_CERT_PATH `
+            -CertificatePassword $env:WINDOWS_SIGNING_CERT_PASSWORD `
+            -TimestampUrl $timestamp
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
