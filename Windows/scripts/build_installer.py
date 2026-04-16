@@ -31,10 +31,19 @@ IGNORE_TOP_LEVEL = {
 }
 
 
+def repo_default_version() -> str:
+    for candidate in (ROOT.parent / "VERSION", ROOT / "VERSION"):
+        if candidate.exists():
+            value = candidate.read_text(encoding="utf-8").strip()
+            if value:
+                return value
+    return "1.0.0"
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build native installers for Research Assistant.")
     parser.add_argument("--platform", choices=["auto", "macos", "windows"], default="auto")
-    parser.add_argument("--version", default="1.0.0")
+    parser.add_argument("--version", default=repo_default_version())
     parser.add_argument(
         "--keep-intermediates",
         action="store_true",

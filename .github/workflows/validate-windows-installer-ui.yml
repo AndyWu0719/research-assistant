@@ -43,6 +43,10 @@ jobs:
 
           git fetch --tags --force
 
+          if (-not $releaseTag -and $version) {
+            $releaseTag = "v$version"
+          }
+
           if (-not $releaseTag) {
             $releaseTag = git tag --list "v*" --sort=-creatordate | Select-Object -First 1
           }

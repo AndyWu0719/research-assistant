@@ -22,7 +22,7 @@ Preferred contribution target:
 
 - put product changes into `MacOS/` first, because it is the verified baseline
 - mirror intentionally into `Windows/` when the behavior should stay symmetric
-- do not touch the root legacy tree unless you are explicitly maintaining compatibility or preparing retirement work
+- treat the root as a thin compatibility layer; only touch it when maintaining wrappers, version plumbing, or retirement work
 
 ## Before Opening A Pull Request
 
@@ -39,6 +39,13 @@ If your change affects packaging:
 - update `README.md` and `README.en.md` when user-facing behavior changes
 - keep `MacOS/` and `Windows/` subtree changes aligned when behavior should stay symmetric
 - if you modify the root legacy tree, explain why it still needs to exist and why the change cannot live only under `MacOS/` / `Windows/`
+
+## Version Management
+
+- The canonical default version now lives in the root `VERSION` file
+- Use a bare version there, for example `1.1.1`
+- Release tags should keep the `v` prefix, for example `v1.1.1`
+- Packaging scripts may still accept `--version`, but the root `VERSION` file is the default source
 
 ## Pull Request Expectations
 

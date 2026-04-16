@@ -1,1 +1,2 @@
--r packaging/runtime-requirements.txt
+# Thin compatibility bridge.
+-r MacOS/requirements.txt

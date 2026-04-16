@@ -38,6 +38,15 @@ DEFAULT_UPDATE_STATE: dict[str, Any] = {
 }
 
 
+def _default_version() -> str:
+    for candidate in (ROOT.parent / "VERSION", ROOT / "VERSION"):
+        if candidate.exists():
+            value = candidate.read_text(encoding="utf-8").strip()
+            if value:
+                return value
+    return "1.0.0"
+
+
 def _bundle_info_plist_path() -> Path | None:
     executable = Path(sys.executable).resolve()
     if executable.name != APP_NAME:
@@ -48,9 +57,10 @@ def _bundle_info_plist_path() -> Path | None:
 
 
 def current_build_info() -> dict[str, Any]:
+    default_version = _default_version()
     payload: dict[str, Any] = {
         "app_name": APP_NAME,
-        "version": "1.0.0",
+        "version": default_version,
         "platform": sys.platform,
         "built_from": str(ROOT),
     }
@@ -72,17 +82,17 @@ def current_build_info() -> dict[str, Any]:
             payload["bundle_identifier"] = bundle_info.get("CFBundleIdentifier")
             payload["bundle_version"] = bundle_info.get("CFBundleVersion")
             payload["bundle_short_version"] = bundle_info.get("CFBundleShortVersionString")
-            if payload.get("version") in {"", None, "1.0.0"}:
-                payload["version"] = bundle_info.get("CFBundleShortVersionString") or bundle_info.get("CFBundleVersion") or "1.0.0"
+            if payload.get("version") in {"", None, default_version}:
+                payload["version"] = bundle_info.get("CFBundleShortVersionString") or bundle_info.get("CFBundleVersion") or default_version
         except (OSError, plistlib.InvalidFileException):
             pass
 
-    payload["version"] = str(payload.get("version") or "1.0.0").strip() or "1.0.0"
+    payload["version"] = str(payload.get("version") or default_version).strip() or default_version
     return payload
 
 
 def current_version() -> str:
-    return str(current_build_info().get("version") or "1.0.0")
+    return str(current_build_info().get("version") or _default_version())
 
 
 def _version_key(value: str) -> tuple[int, ...]:

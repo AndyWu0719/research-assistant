@@ -2,7 +2,9 @@
 
 [简体中文](README.md) | [English](README.en.md)
 
-> 当前发布状态: `v1.1.0` 已发布
+> 当前版本来源：root `VERSION`（当前为 `1.1.1`）
+>
+> 最新已发布 release：`v1.1.0`
 
 `research-assistant` 是一个本地桌面研究工作台。桌面 UI 负责参数配置、状态展示、结果回读和更新提示；真实任务执行由本地 `Codex CLI` 完成；macOS / Windows 安装包都会在首次启动时自动准备本地 Codex CLI 运行环境；GitHub Releases 作为默认更新源。
 
@@ -54,6 +56,7 @@ flowchart LR
 ```text
 research-assistant/
 ├── .github/workflows/
+├── VERSION
 ├── MacOS/
 │   ├── desktop/
 │   ├── research_assistant/
@@ -70,6 +73,15 @@ research-assistant/
 │   ├── packaging/
 │   ├── scripts/
 │   └── skills/
+├── desktop/
+│   └── main.py
+├── scripts/
+│   ├── bootstrap.py
+│   ├── build_installer.py
+│   ├── run_automation.py
+│   ├── smoke_test.py
+│   └── install_mac.sh
+├── requirements.txt
 ├── README.md
 └── README.en.md
 ```
@@ -78,30 +90,34 @@ research-assistant/
 
 - `MacOS/`: 当前 macOS 已验证基线；本地运行、打包和签名流程都从这里进入
 - `Windows/`: 与 `MacOS/` 对称的 Windows 子树；用于后续 Windows 专项演进与 CI 构建
-- root 目录：保留仓库文档、工作流和迁移期兼容基线，不在本轮直接删除原树
+- root 目录：保留仓库文档、工作流、统一版本来源以及最小兼容入口
 
-当前仍保留在 root 的兼容层目录：
+当前 root 已收敛为 thin compatibility layer，仅保留这些兼容入口：
 
-- `desktop/`
-- `research_assistant/`
-- `configs/`
-- `outputs/`
-- `packaging/`
-- `scripts/`
-- `skills/`
+- `desktop/main.py`
+- `scripts/bootstrap.py`
+- `scripts/build_installer.py`
+- `scripts/run_automation.py`
+- `scripts/smoke_test.py`
+- `scripts/install_mac.sh`
 - `requirements.txt`
-- `AGENTS.md`
 
-这些 root 旧目录当前不是官方主入口；它们仍保留的原因是：
+这些兼容入口只负责转发到 `MacOS/` 或 `Windows/`，不再承载完整业务实现。
 
-- `v1.1.0` release notes 仍将 root runtime tree 定义为迁移期兼容基线
-- 在完成明确退役流程前，保留它们可以作为回退锚点
+已经从 root 退役的重复实现：
 
-后续退役条件：
+- `research_assistant/`
+- `packaging/`
+- `skills/`
+- `desktop/app.py`
+- `desktop/runtime.py`
+- root 下 tracked 的默认 `configs/` 模板
+- root 下 tracked 的 `outputs/` 占位文件
 
-1. root 兼容层身份已在文档中稳定声明
-2. `MacOS/` / `Windows/` 子树持续承担唯一官方入口职责
-3. 不再有 release / 文档承诺要求保留 root runtime tree
+说明：
+
+- 你本机如果还保留历史 root `configs/` / `outputs/` 运行数据，它们可能仍存在于磁盘，但已不再是仓库追踪的官方实现内容。
+- 仓库当前的官方实现与官方构建链只保留在 `MacOS/` 与 `Windows/`。
 
 ## 运行时工作区
 
@@ -109,7 +125,7 @@ research-assistant/
 
 - macOS 推荐直接使用 `MacOS/` 子树作为工作区
 - Windows 推荐直接使用 `Windows/` 子树作为工作区
-- root 原树暂时保留为迁移期兼容基线，不建议再作为首选入口，也不建议新增功能继续优先落在 root 旧树
+- root 仅保留 thin compatibility layer，可继续兼容旧入口命令，但不再是首选工作区
 
 打包态：
 
@@ -133,6 +149,13 @@ python MacOS/desktop/main.py
 
 ```bash
 python MacOS/scripts/bootstrap.py
+```
+
+兼容入口仍可用，但只做转发：
+
+```bash
+python desktop/main.py
+python scripts/bootstrap.py
 ```
 
 ## Codex CLI 依赖
@@ -189,25 +212,31 @@ python -m pip install -r MacOS/requirements.txt
 python -m pip install -r MacOS/packaging/requirements-build.txt
 ```
 
+版本来源：
+
+- 默认从 root `VERSION` 读取
+- 当前值：`1.1.1`
+- 需要临时覆盖时，仍可显式传 `--version <version>`
+
 ### macOS
 
 构建：
 
 ```bash
-python MacOS/scripts/build_installer.py --platform macos --version <version>
+python MacOS/scripts/build_installer.py --platform macos
 ```
 
 产物：
 
 - `MacOS/dist/installers/macos/pyinstaller/Research Assistant.app`
-- `MacOS/dist/installers/macos/ResearchAssistant-macos-<version>.pkg`
+- `MacOS/dist/installers/macos/ResearchAssistant-macos-1.1.1.pkg`
 
 签名与公证：
 
 ```bash
 source MacOS/packaging/macos/signing.env
 bash MacOS/packaging/macos/store_notary_credentials.sh
-python MacOS/packaging/macos/sign_and_notarize.py --version <version>
+python MacOS/packaging/macos/sign_and_notarize.py
 ```
 
 ### Windows
@@ -228,18 +257,20 @@ winget install NSIS.NSIS
 构建：
 
 ```powershell
-python Windows/scripts/build_installer.py --platform windows --version <version>
+python Windows/scripts/build_installer.py --platform windows
 ```
 
 产物：
 
 - `Windows/dist/installers/windows/pyinstaller/Research Assistant/`
-- `Windows/dist/installers/windows/ResearchAssistant-windows-<version>.exe`
+- `Windows/dist/installers/windows/ResearchAssistant-windows-1.1.1.exe`
 
 CI 方案：
 
 - 工作流文件：`.github/workflows/build-windows-installer.yml`
-- 可手动触发，也会在推送 `v*` tag 时构建并上传 Windows 安装包
+- 推送 `v*` tag 时会构建并上传 Windows 安装包
+- 普通 `main` push 默认只构建 workflow artifact，不再默认上传到最新 release
+- 手动触发时若不显式给 `version`，会优先读取 root `VERSION`
 
 ## 更新检查
 
@@ -315,5 +346,7 @@ Windows 安装包 UI 验证：
 - Windows 安装包目前只能在 Windows 原生环境或 Windows CI 中生成
 - GitHub 更新依赖你在 Release 中上传正确的平台安装包
 - 公共分发仍需要你自己的 Apple / Windows 签名体系
-- root 旧运行树当前仍保留为兼容层，尚未正式退役
-- 当前 release tag 与安装包文件名可能不一致；其来源是打包命令显式传入的 `--version` 与 release tag 尚未完全绑定
+- root 当前只保留 thin compatibility layer
+- release tag 仍建议使用带前缀形式，如 `v1.1.1`
+- 版本文件 `VERSION` 使用裸版本，如 `1.1.1`
+- 默认资产名会跟随版本生成：`ResearchAssistant-macos-1.1.1.pkg` / `ResearchAssistant-windows-1.1.1.exe`

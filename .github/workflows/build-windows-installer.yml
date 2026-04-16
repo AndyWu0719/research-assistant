@@ -48,36 +48,39 @@ jobs:
           $refName = "${{ github.ref_name }}"
           $version = "${{ github.event.inputs.version }}"
           $releaseTag = "${{ github.event.inputs.release_tag }}"
-          $shouldUpload = "true"
+          $shouldUpload = "false"
+          $versionFile = Join-Path $env:GITHUB_WORKSPACE "VERSION"
 
           if ($eventName -eq "workflow_dispatch") {
-            if ("${{ github.event.inputs.upload_to_release }}" -ne "true") {
-              $shouldUpload = "false"
+            if ("${{ github.event.inputs.upload_to_release }}" -eq "true") {
+              $shouldUpload = "true"
             }
           } elseif ($refType -eq "tag") {
             $releaseTag = $refName
-          } else {
-            git fetch --tags --force
-            $releaseTag = git tag --list "v*" --sort=-creatordate | Select-Object -First 1
+            $shouldUpload = "true"
           }
 
           $version = $version.Trim()
           $releaseTag = $releaseTag.Trim()
 
-          if (-not $releaseTag -and $refType -eq "tag") {
-            $releaseTag = $refName.Trim()
+          if (-not $version -and (Test-Path $versionFile)) {
+            $version = (Get-Content $versionFile -TotalCount 1).Trim()
+          }
+
+          if (-not $releaseTag -and $eventName -eq "workflow_dispatch" -and $shouldUpload -eq "true" -and $version) {
+            $releaseTag = "v$version"
           }
 
           if (-not $version) {
-            if ($releaseTag -match "(\d+\.\d+\.\d+)") {
+            if ($refType -eq "tag" -and $refName -match "(\d+\.\d+\.\d+)") {
               $version = $Matches[1]
-            } elseif ($refName -match "(\d+\.\d+\.\d+)") {
+            } elseif ($releaseTag -match "(\d+\.\d+\.\d+)") {
               $version = $Matches[1]
             }
           }
 
           if (-not $version) {
-            throw "Missing version. Pass workflow_dispatch input `version`, or use a tag/release name containing x.y.z."
+            throw "Missing version. Pass workflow_dispatch input `version`, provide a `VERSION` file, or use a tag/release name containing x.y.z."
           }
 
           if ($shouldUpload -eq "true" -and -not $releaseTag) {
