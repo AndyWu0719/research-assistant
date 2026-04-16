@@ -5,11 +5,11 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Build version (for example 1.0.0)
+        description: Build version (for example 1.1.0)
         required: false
         default: ""
       release_tag:
-        description: Existing release tag to upload into (for example Version-1.0.0-2026.3.27)
+        description: Existing release tag to upload into (for example v1.1.0)
         required: false
         default: ""
       upload_to_release:
@@ -58,7 +58,7 @@ jobs:
             $releaseTag = $refName
           } else {
             git fetch --tags --force
-            $releaseTag = git tag --list "Version-*" --sort=-creatordate | Select-Object -First 1
+            $releaseTag = git tag --list "v*" --sort=-creatordate | Select-Object -First 1
           }
 
           $version = $version.Trim()
@@ -81,7 +81,7 @@ jobs:
           }
 
           if ($shouldUpload -eq "true" -and -not $releaseTag) {
-            throw "Missing release tag. Pass workflow_dispatch input `release_tag`, or ensure the repository already has a `Version-*` tag."
+            throw "Missing release tag. Pass workflow_dispatch input `release_tag`, or ensure the repository already has a `v*` tag."
           }
 
           "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8

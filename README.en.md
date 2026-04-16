@@ -2,7 +2,7 @@
 
 [简体中文](README.md) | [English](README.en.md)
 
-> Current Version: `Version 1.0.0`
+> Release Status: `v1.1.0` has been published
 
 `research-assistant` is a local desktop research workstation. The desktop UI handles task configuration, local status, result review, and update prompts; the real execution is performed by a local `Codex CLI`; packaged macOS and Windows installs automatically prepare the local Codex CLI runtime on first launch; GitHub Releases is the default update source.
 
@@ -41,8 +41,8 @@ flowchart LR
 
 | Platform | Desktop UI | Runtime Workspace | Build Requirement | Installer Output |
 | --- | --- | --- | --- | --- |
-| macOS | Same PySide6 UI | `~/Library/Application Support/Research Assistant/workspace` | Must be built on a macOS host | `.app` + `.pkg` |
-| Windows | Same PySide6 UI | `%LOCALAPPDATA%\\Research Assistant\\workspace` | Must be built on a Windows host or Windows CI | `.exe` |
+| macOS | Mirrored PySide6 subtree and the current verified baseline | `~/Library/Application Support/Research Assistant/workspace` | Must be built on a macOS host | `.app` + `.pkg` |
+| Windows | PySide6 subtree mirrored from the macOS baseline | `%LOCALAPPDATA%\\Research Assistant\\workspace` | Must be built on a Windows host or Windows CI | `.exe` |
 
 Notes:
 
@@ -81,13 +81,36 @@ Directory responsibilities:
 - `Windows/`: mirrored Windows subtree for CI builds and future Windows-specific work
 - repository root: docs, workflows, and the temporary migration compatibility baseline
 
+The root still retains a compatibility layer made of:
+
+- `desktop/`
+- `research_assistant/`
+- `configs/`
+- `outputs/`
+- `packaging/`
+- `scripts/`
+- `skills/`
+- `requirements.txt`
+- `AGENTS.md`
+
+These legacy root directories are not the official primary entrypoints anymore. They are still kept because:
+
+- the `v1.1.0` release notes still describe the root runtime tree as the migration-time compatibility baseline
+- they still act as a rollback anchor while the subtree structure settles
+
+Retirement conditions:
+
+1. the compatibility-layer role is stably documented
+2. `MacOS/` and `Windows/` continue to serve as the only official entrypoints
+3. no release or documentation promise still requires keeping the root runtime tree
+
 ## Runtime Workspace
 
 Development mode:
 
 - Use `MacOS/` as the preferred macOS workspace
 - Use `Windows/` as the preferred Windows workspace
-- The old root-level tree is still kept temporarily as a migration compatibility baseline
+- The old root-level tree is still kept temporarily as a migration compatibility baseline, but it is no longer the preferred place for new work
 
 Packaged mode:
 
@@ -172,20 +195,20 @@ python -m pip install -r MacOS/packaging/requirements-build.txt
 Build:
 
 ```bash
-python MacOS/scripts/build_installer.py --platform macos --version 1.0.0
+python MacOS/scripts/build_installer.py --platform macos --version <version>
 ```
 
 Artifacts:
 
 - `MacOS/dist/installers/macos/pyinstaller/Research Assistant.app`
-- `MacOS/dist/installers/macos/ResearchAssistant-macos-1.0.0.pkg`
+- `MacOS/dist/installers/macos/ResearchAssistant-macos-<version>.pkg`
 
 Signing and notarization:
 
 ```bash
 source MacOS/packaging/macos/signing.env
 bash MacOS/packaging/macos/store_notary_credentials.sh
-python MacOS/packaging/macos/sign_and_notarize.py --version 1.0.0
+python MacOS/packaging/macos/sign_and_notarize.py --version <version>
 ```
 
 ### Windows
@@ -206,13 +229,13 @@ winget install NSIS.NSIS
 Build:
 
 ```powershell
-python Windows/scripts/build_installer.py --platform windows --version 1.0.0
+python Windows/scripts/build_installer.py --platform windows --version <version>
 ```
 
 Artifacts:
 
 - `Windows/dist/installers/windows/pyinstaller/Research Assistant/`
-- `Windows/dist/installers/windows/ResearchAssistant-windows-1.0.0.exe`
+- `Windows/dist/installers/windows/ResearchAssistant-windows-<version>.exe`
 
 CI option:
 
@@ -231,7 +254,12 @@ Default behavior:
 - Download `.pkg` on macOS
 - Download `.exe` on Windows
 
-Default config: `configs/app_update.yaml`
+Default update config lives inside each subtree:
+
+- `MacOS/configs/app_update.yaml`
+- `Windows/configs/app_update.yaml`
+
+Packaged builds use the subtree-local config as the template before syncing it into the per-platform workspace.
 
 ```yaml
 provider: github_release
@@ -279,7 +307,8 @@ Windows installer UI validation:
 
 Reports are written to:
 
-- `outputs/smoke_tests/`
+- `MacOS/outputs/smoke_tests/` for local macOS smoke runs
+- Windows UI validation reports are uploaded as GitHub Actions artifacts rather than written into the local root `outputs/`
 
 ## Known Limits
 
@@ -287,3 +316,5 @@ Reports are written to:
 - Windows installers can only be produced on native Windows or Windows CI
 - GitHub-based updates require the correct platform asset on each release
 - Public distribution still requires your own Apple / Windows signing setup
+- The legacy root runtime tree is still retained as a compatibility layer and has not been formally retired yet
+- Release tags and installer asset filenames may still diverge; today that comes from the explicit `--version` used during packaging not being fully coupled to the release tag
