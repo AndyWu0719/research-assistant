@@ -145,6 +145,13 @@ def pyinstaller_add_data(source: Path, destination: str) -> str:
     return f"{source}{separator}{destination}"
 
 
+def pyinstaller_extra_args(platform: str) -> list[str]:
+    normalized = str(platform or "").strip().lower()
+    if normalized == "windows":
+        return ["--collect-all", "tzdata"]
+    return []
+
+
 def resolve_makensis() -> str:
     executable = shutil.which("makensis")
     if executable:
@@ -229,6 +236,7 @@ def build_macos(version: str, *, keep_intermediates: bool = False) -> dict[str, 
         str(pyinstaller_spec),
         "--add-data",
         add_data_arg,
+        *pyinstaller_extra_args("macos"),
         str(ROOT / "desktop" / "main.py"),
     ]
     run(command, cwd=ROOT)
@@ -295,6 +303,7 @@ def build_windows(version: str, *, keep_intermediates: bool = False) -> dict[str
         str(pyinstaller_spec),
         "--add-data",
         pyinstaller_add_data(template_root, "project_template"),
+        *pyinstaller_extra_args("windows"),
         str(ROOT / "desktop" / "main.py"),
     ]
     run(command, cwd=ROOT)

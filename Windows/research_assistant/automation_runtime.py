@@ -5,7 +5,7 @@ import signal
 import subprocess
 import sys
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone, tzinfo
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -38,11 +38,11 @@ def _normalize_token(value: Any) -> str:
     return " ".join(str(value or "").strip().lower().split())
 
 
-def _time_zone(name: str | None) -> ZoneInfo:
+def _time_zone(name: str | None) -> tzinfo:
     try:
         return ZoneInfo(str(name or "Asia/Hong_Kong"))
     except Exception:
-        return ZoneInfo("UTC")
+        return timezone.utc
 
 
 def _parse_run_time(value: str | None) -> tuple[int, int]:
