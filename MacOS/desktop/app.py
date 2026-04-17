@@ -49,6 +49,7 @@ from research_assistant.app_update import (
     mark_update_prompted,
     should_auto_check_updates,
 )
+from research_assistant.update_installer import start_in_place_update
 from research_assistant.automation_runtime import automation_schedule_snapshot, daemon_snapshot, run_local_automation
 from research_assistant.codex_bridge import (
     BridgeResponse,
@@ -2804,6 +2805,17 @@ class ResearchAssistantWindow(QMainWindow):
         if not download_path:
             self._on_update_download_error(ui_text("未拿到更新包路径。", "Missing update package path.", self.language))
             return
+        if is_frozen_app():
+            launch = start_in_place_update(
+                download_path,
+                language=self.language,
+            )
+            if launch.get("status") == "started":
+                message = str(launch.get("message") or ui_text("更新安装器已启动。", "The update installer has started.", self.language))
+                QMessageBox.information(self, ui_text("开始更新", "Start Update", self.language), message)
+                self.statusBar().showMessage(message)
+                QTimer.singleShot(200, QApplication.instance().quit)
+                return
         open_download_target(download_path)
         message = ui_text(
             f"已准备更新安装包：\n{download_path}\n\n安装器已打开，按提示完成覆盖安装即可。",

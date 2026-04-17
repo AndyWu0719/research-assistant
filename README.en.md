@@ -184,6 +184,23 @@ Current behavior:
 - On macOS and Windows GUI launches, it also probes common install paths
 - If `codex login status` is usable, the desktop app invokes the local CLI directly
 
+## In-App Updates
+
+The current desktop `Check Updates -> Download And Install` flow now has two layers:
+
+- User-facing behavior:
+  - the app checks GitHub Releases for the installer asset matching the current platform
+  - when a newer version is available, packaged apps now prefer downloading the installer and starting an in-place replacement flow
+- Security gate:
+  - macOS only starts in-place replacement for `.pkg` installers that pass signature and notarization checks
+  - Windows only starts in-place replacement for `.exe` installers that pass code-signing validation
+  - when an installer is not trusted, the desktop app refuses automatic overwrite instead of bypassing the platform security model
+
+Notes:
+
+- development-mode or unpackaged runs do not use the in-place replacement flow; they keep the download/open-installer behavior
+- therefore, in-place updates only become truly usable once the released installer assets are themselves trusted
+
 ## Automation
 
 Check status:
@@ -240,6 +257,15 @@ bash MacOS/packaging/macos/store_notary_credentials.sh
 python MacOS/packaging/macos/sign_and_notarize.py
 ```
 
+Distribution requirements:
+
+- a public macOS `.pkg` release should always go through:
+  - Developer ID Application signing
+  - Developer ID Installer signing
+  - notarization
+- without those steps, Gatekeeper will still classify the downloaded installer as untrusted
+- the repository now includes `build-macos-installer.yml` as the release-path gate; if signing secrets are missing, the release path should fail instead of uploading an unsigned package
+
 ### Windows
 
 Hard constraints:
@@ -272,6 +298,12 @@ CI option:
 - Tag pushes on `v*` build and upload the Windows installer
 - Ordinary pushes to `main` now build workflow artifacts without uploading to the latest release by default
 - Manual dispatch prefers the root `VERSION` file when `version` is omitted
+
+Windows code signing:
+
+- public Windows `.exe` installers should be Authenticode-signed
+- `build-windows-installer.yml` now supports a signing step before release upload
+- if Windows signing secrets are missing, the workflow should block uploading an unsigned installer to a release
 
 ## Updates
 
@@ -351,3 +383,4 @@ Reports are written to:
 - Release tags should keep the `v` prefix, such as `v1.1.1`
 - The `VERSION` file stores the bare version, such as `1.1.1`
 - Default asset names now follow the version source: `ResearchAssistant-macos-1.1.1.pkg` and `ResearchAssistant-windows-1.1.1.exe`
+- if Apple / Windows signing credentials are not configured in the repository yet, the new workflows can enforce release gates, but they still cannot produce trusted installer assets by themselves
