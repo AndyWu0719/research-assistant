@@ -226,6 +226,23 @@ def codex_command_env(executable: str | Path | None = None) -> dict[str, str]:
     return env
 
 
+def background_subprocess_kwargs(platform_override: str | None = None) -> dict[str, Any]:
+    platform_name = str(platform_override or "").strip().lower()
+    is_windows = platform_name == "windows" or (not platform_name and os.name == "nt")
+    if not is_windows:
+        return {}
+    kwargs: dict[str, Any] = {
+        "creationflags": int(getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)),
+    }
+    startupinfo_cls = getattr(subprocess, "STARTUPINFO", None)
+    use_show_window = getattr(subprocess, "STARTF_USESHOWWINDOW", None)
+    if startupinfo_cls is not None and use_show_window is not None:
+        startupinfo = startupinfo_cls()
+        startupinfo.dwFlags |= use_show_window
+        kwargs["startupinfo"] = startupinfo
+    return kwargs
+
+
 def _command_output(command: list[str]) -> str:
     process = subprocess.run(
         command,
@@ -233,6 +250,7 @@ def _command_output(command: list[str]) -> str:
         text=True,
         check=False,
         env=codex_command_env(command[0] if command else None),
+        **background_subprocess_kwargs(),
     )
     output = (process.stdout or process.stderr or "").strip()
     if process.returncode != 0:
@@ -398,6 +416,7 @@ def _install_codex_with_npm(npm_executable: str, language: str) -> tuple[str, li
         text=True,
         check=False,
         env=env,
+        **background_subprocess_kwargs(),
     )
     if process.returncode != 0:
         output = (process.stdout or process.stderr or "").strip()

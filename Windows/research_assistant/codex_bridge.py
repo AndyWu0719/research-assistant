@@ -252,6 +252,23 @@ def _quality_selection(task_type: str, requested: str | None) -> QualityProfileS
     )
 
 
+def background_subprocess_kwargs(platform_override: str | None = None) -> dict[str, Any]:
+    platform_name = str(platform_override or "").strip().lower()
+    is_windows = platform_name == "windows" or (not platform_name and os.name == "nt")
+    if not is_windows:
+        return {}
+    kwargs: dict[str, Any] = {
+        "creationflags": int(getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)),
+    }
+    startupinfo_cls = getattr(subprocess, "STARTUPINFO", None)
+    use_show_window = getattr(subprocess, "STARTF_USESHOWWINDOW", None)
+    if startupinfo_cls is not None and use_show_window is not None:
+        startupinfo = startupinfo_cls()
+        startupinfo.dwFlags |= use_show_window
+        kwargs["startupinfo"] = startupinfo
+    return kwargs
+
+
 def _load_paper_fetcher_module() -> Any:
     global _PAPER_FETCHER_MODULE
     if _PAPER_FETCHER_MODULE is not None:
@@ -351,6 +368,7 @@ def detect_codex_cli(refresh: bool = False, language: str | None = None) -> Code
             text=True,
             check=False,
             env=codex_command_env(executable),
+            **background_subprocess_kwargs(),
         )
         version = (version_process.stdout or version_process.stderr).strip() or None
     except OSError as exc:
@@ -370,6 +388,7 @@ def detect_codex_cli(refresh: bool = False, language: str | None = None) -> Code
             text=True,
             check=False,
             env=codex_command_env(executable),
+            **background_subprocess_kwargs(),
         )
         output = (login_process.stdout or login_process.stderr).strip()
         lowered = output.lower()
@@ -710,6 +729,7 @@ def _invoke_codex_exec(prompt: str, quality: QualityProfileSelection, executable
             input=prompt,
             check=False,
             env=codex_command_env(executable),
+            **background_subprocess_kwargs(),
         )
         last_message = last_message_path.read_text(encoding="utf-8").strip() if last_message_path.exists() else ""
         try:
