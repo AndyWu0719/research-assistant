@@ -4,7 +4,7 @@
 
 > 当前版本来源：root `VERSION`（当前为 `1.1.1`）
 >
-> 最新已发布 release：`v1.1.0`
+> 最新已发布 release：`v1.1.1`
 
 `research-assistant` 是一个本地桌面研究工作台。桌面 UI 负责参数配置、状态展示、结果回读和更新提示；真实任务执行由本地 `Codex CLI` 完成；macOS / Windows 安装包都会在首次启动时自动准备本地 Codex CLI 运行环境；GitHub Releases 作为默认更新源。
 
@@ -38,6 +38,51 @@ flowchart LR
 - 构建 macOS `.app` / `.pkg`
 - 构建 Windows 一体安装包 `.exe`
 - 从 GitHub Releases 检查更新并下载安装包
+- 通过全局“站点账号”中心安全保存受保护站点凭据
+- 在受支持站点上复用登录 session，辅助下载受限论文 PDF
+- 扩展社科 / 文科常见来源站点
+
+## 站点账号中心
+
+- 顶部工具栏新增 `站点账号`
+- 用户名和密码不会写入 YAML / JSON 配置
+- macOS 使用系统 Keychain
+- Windows 使用 Credential Manager
+- 当前支持的受保护站点包括：
+  - `JSTOR`
+  - `Project MUSE`
+  - `ProQuest`
+  - `EBSCOhost`
+  - `ScienceDirect`
+  - `SpringerLink`
+  - `Wiley Online Library`
+  - `Taylor & Francis`
+  - `Sage Journals`
+
+当前登录流程：
+
+- 应用会先尝试自动填入已保存的用户名和密码
+- 若跳入机构 SSO 页面，用户在同一窗口继续完成
+- 若出现 MFA，用户手动完成后点击继续
+- 登录产生的站点 session 会被本地缓存，后续下载优先复用
+
+## 来源扩展与时间窗
+
+研究来源已扩展到更多学科，新增：
+
+- `SSRN`
+- `PubMed`
+- `ERIC`
+- `JSTOR`
+- `Project MUSE`
+- `PhilPapers`
+
+时间窗控件已从长文本下拉改为紧凑形式，例如：
+
+- `最近 [30] 天`
+- `最近 [1] 年`
+
+固定语义不再挤进下拉框里，减少截断和拥挤。
 
 ## 平台与打包
 

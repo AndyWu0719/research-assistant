@@ -13,6 +13,7 @@ from typing import Any
 import yaml
 
 from research_assistant.language import DEFAULT_LANGUAGE, normalize_language
+from research_assistant.site_catalog import compact_time_range_to_payload, discovery_source_options
 from research_assistant.ui_text import normalize_risk_preference, normalize_summary_depth
 
 
@@ -54,32 +55,23 @@ QUALITY_PROFILE_OPTIONS = [
     "high-accuracy",
     "max-analysis",
 ]
-SOURCE_OPTIONS = [
-    "arXiv",
-    "OpenReview",
-    "ACL Anthology",
-    "CVF Open Access",
-    "PMLR",
-    "Semantic Scholar",
-    "Crossref",
-    "Google Scholar",
-]
+SOURCE_OPTIONS = discovery_source_options()
 RANKING_PROFILES = [
     "balanced-default",
     "trend-focused",
     "resource-constrained",
 ]
 TIME_RANGE_OPTIONS = {
-    "7d": {"mode": "rolling", "days": 7, "label": "最近 7 天"},
-    "14d": {"mode": "rolling", "days": 14, "label": "最近 14 天"},
-    "30d": {"mode": "rolling", "days": 30, "label": "最近 30 天"},
-    "90d": {"mode": "rolling", "days": 90, "label": "最近 90 天"},
-    "1y": {"mode": "rolling", "days": 365, "label": "最近 1 年"},
+    "7d": compact_time_range_to_payload(7, "day"),
+    "14d": compact_time_range_to_payload(14, "day"),
+    "30d": compact_time_range_to_payload(30, "day"),
+    "90d": compact_time_range_to_payload(90, "day"),
+    "1y": compact_time_range_to_payload(1, "year"),
 }
 
 DEFAULT_SCAN_DEFAULTS: dict[str, Any] = {
     "field": "multimodal large language models",
-    "time_range": {"mode": "rolling", "days": 7, "label": "最近 7 天"},
+    "time_range": deepcopy(TIME_RANGE_OPTIONS["7d"]),
     "sources": deepcopy(DEFAULT_SOURCES),
     "ranking_profile": DEFAULT_RANKING_PROFILE,
     "quality_profile": DEFAULT_QUALITY_PROFILE,
@@ -252,6 +244,10 @@ DEFAULT_USER_PREFERENCES: dict[str, Any] = {
         "task_name": DEFAULT_AUTOMATION_CONFIG["task_name"],
         "filename": None,
     },
+    "site_accounts": {
+        "records": [],
+        "active_site_filter": "all",
+    },
 }
 
 DEFAULT_APP_UPDATE_CONFIG: dict[str, Any] = {
@@ -411,7 +407,12 @@ def normalize_time_range(value: str | dict[str, Any]) -> dict[str, Any]:
         if "label" not in merged:
             days = merged.get("days")
             if days:
-                merged["label"] = f"最近 {days} 天"
+                normalized_days = max(1, int(days))
+                merged = (
+                    compact_time_range_to_payload(normalized_days // 365, "year")
+                    if normalized_days >= 365 and normalized_days % 365 == 0
+                    else compact_time_range_to_payload(normalized_days, "day")
+                )
         return merged
     return deepcopy(TIME_RANGE_OPTIONS.get(value, TIME_RANGE_OPTIONS["7d"]))
 
@@ -614,6 +615,43 @@ def resolve_quality_profile(value: str | None, task_type: str | None = None) -> 
     return profile
 
 
+def normalize_site_account_record(record: dict[str, Any]) -> dict[str, Any]:
+    payload = {
+        "site_key": str(record.get("site_key") or "").strip(),
+        "account_label": str(record.get("account_label") or "").strip(),
+        "username_hint": str(record.get("username_hint") or "").strip(),
+        "login_mode": str(record.get("login_mode") or "direct").strip() or "direct",
+        "institution_hint": str(record.get("institution_hint") or "").strip(),
+        "auto_fill_enabled": bool(record.get("auto_fill_enabled", True)),
+        "has_secret": bool(record.get("has_secret", False)),
+        "last_login_success_at": str(record.get("last_login_success_at") or "").strip(),
+        "last_session_refresh_at": str(record.get("last_session_refresh_at") or "").strip(),
+    }
+    return payload
+
+
+def load_site_account_preferences() -> dict[str, Any]:
+    site_accounts = deepcopy(load_user_preferences().get("site_accounts") or DEFAULT_USER_PREFERENCES["site_accounts"])
+    records = site_accounts.get("records") or []
+    site_accounts["records"] = [normalize_site_account_record(record) for record in records if isinstance(record, dict)]
+    site_accounts["active_site_filter"] = str(site_accounts.get("active_site_filter") or "all").strip() or "all"
+    return site_accounts
+
+
+def save_site_account_preferences(site_accounts: dict[str, Any]) -> dict[str, Any]:
+    payload = {
+        "records": [
+            normalize_site_account_record(record)
+            for record in site_accounts.get("records") or []
+            if isinstance(record, dict)
+            and str(record.get("site_key") or "").strip()
+            and str(record.get("account_label") or "").strip()
+        ],
+        "active_site_filter": str(site_accounts.get("active_site_filter") or "all").strip() or "all",
+    }
+    return update_user_preferences({"site_accounts": payload})
+
+
 def load_user_preferences() -> dict[str, Any]:
     payload = load_yaml(USER_PREFERENCES_PATH, DEFAULT_USER_PREFERENCES)
     payload = deep_merge(DEFAULT_USER_PREFERENCES, payload)
@@ -637,6 +675,15 @@ def load_user_preferences() -> dict[str, Any]:
     task_defaults["idea_feasibility"]["risk_preference"] = normalize_risk_preference(
         task_defaults["idea_feasibility"].get("risk_preference")
     )
+    site_accounts = payload.setdefault("site_accounts", deepcopy(DEFAULT_USER_PREFERENCES["site_accounts"]))
+    site_accounts["records"] = [
+        normalize_site_account_record(record)
+        for record in site_accounts.get("records") or []
+        if isinstance(record, dict)
+        and str(record.get("site_key") or "").strip()
+        and str(record.get("account_label") or "").strip()
+    ]
+    site_accounts["active_site_filter"] = str(site_accounts.get("active_site_filter") or "all").strip() or "all"
     active_automation = payload.setdefault("active_automation", {})
     current_path = current_automation_config_path()
     current_config = load_yaml(current_path, DEFAULT_AUTOMATION_CONFIG)
@@ -662,6 +709,15 @@ def save_user_preferences(preferences: dict[str, Any]) -> None:
     task_defaults["idea_feasibility"]["risk_preference"] = normalize_risk_preference(
         task_defaults["idea_feasibility"].get("risk_preference")
     )
+    site_accounts = payload.setdefault("site_accounts", deepcopy(DEFAULT_USER_PREFERENCES["site_accounts"]))
+    site_accounts["records"] = [
+        normalize_site_account_record(record)
+        for record in site_accounts.get("records") or []
+        if isinstance(record, dict)
+        and str(record.get("site_key") or "").strip()
+        and str(record.get("account_label") or "").strip()
+    ]
+    site_accounts["active_site_filter"] = str(site_accounts.get("active_site_filter") or "all").strip() or "all"
     save_yaml(USER_PREFERENCES_PATH, payload)
 
 

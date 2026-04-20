@@ -4,7 +4,7 @@
 
 > Version source: root `VERSION` (currently `1.1.1`)
 >
-> Latest published release: `v1.1.0`
+> Latest published release: `v1.1.1`
 
 `research-assistant` is a local desktop research workstation. The desktop UI handles task configuration, local status, result review, and update prompts; the real execution is performed by a local `Codex CLI`; packaged macOS and Windows installs automatically prepare the local Codex CLI runtime on first launch; GitHub Releases is the default update source.
 
@@ -38,6 +38,51 @@ flowchart LR
 - Build macOS `.app` / `.pkg`
 - Build Windows all-in-one installer `.exe`
 - Check GitHub Releases and download the right installer per platform
+- Store protected-site credentials through a global Site Accounts center
+- Reuse authenticated sessions for supported protected paper platforms
+- Include broader social science and humanities discovery sources
+
+## Site Accounts Center
+
+- The desktop toolbar now includes `Site Accounts`
+- Usernames and passwords do not go into YAML / JSON config files
+- macOS uses the system Keychain
+- Windows uses Credential Manager
+- Supported protected sites currently include:
+  - `JSTOR`
+  - `Project MUSE`
+  - `ProQuest`
+  - `EBSCOhost`
+  - `ScienceDirect`
+  - `SpringerLink`
+  - `Wiley Online Library`
+  - `Taylor & Francis`
+  - `Sage Journals`
+
+Current login flow:
+
+- the app first tries to auto-fill the saved username and password
+- if institution SSO takes over, the user continues in the same window
+- if MFA appears, the user completes it manually and continues
+- the resulting authenticated site session is cached locally and reused for later downloads
+
+## Source Expansion And Compact Time Controls
+
+The discovery-source list now includes broader disciplines, with new entries such as:
+
+- `SSRN`
+- `PubMed`
+- `ERIC`
+- `JSTOR`
+- `Project MUSE`
+- `PhilPapers`
+
+Time-range controls now use compact layouts such as:
+
+- `Last [30] day(s)`
+- `Last [1] year(s)`
+
+The fixed semantic text is no longer packed into the dropdown label itself, which improves readability.
 
 ## Platform Matrix
 

@@ -16,6 +16,12 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, quote, urljoin, urlparse
 from urllib.request import Request, urlopen
 
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from research_assistant.site_access import authenticated_cookie_header, inspect_reference, resolve_site_account, session_is_valid
+
 
 USER_AGENT = "research-assistant-paper-fetcher/2.0"
 DEFAULT_TIMEOUT = 30
@@ -100,19 +106,22 @@ def ensure_pdf_suffix(filename: str) -> str:
     return filename if filename.lower().endswith(".pdf") else f"{filename}.pdf"
 
 
-def make_request(url: str, accept: str) -> Request:
+def make_request(url: str, accept: str, cookie_header: str | None = None) -> Request:
+    headers = {
+        "User-Agent": USER_AGENT,
+        "Accept": accept,
+        "Accept-Language": "en-US,en;q=0.8",
+    }
+    if cookie_header:
+        headers["Cookie"] = cookie_header
     return Request(
         url,
-        headers={
-            "User-Agent": USER_AGENT,
-            "Accept": accept,
-            "Accept-Language": "en-US,en;q=0.8",
-        },
+        headers=headers,
     )
 
 
-def read_url(url: str, accept: str) -> tuple[bytes, Any, str]:
-    request = make_request(url, accept)
+def read_url(url: str, accept: str, cookie_header: str | None = None) -> tuple[bytes, Any, str]:
+    request = make_request(url, accept, cookie_header=cookie_header)
     with urlopen(request, timeout=DEFAULT_TIMEOUT) as response:
         return response.read(), response.info(), response.geturl()
 
@@ -233,8 +242,8 @@ def candidate_score(url: str, text: str) -> int:
     return score
 
 
-def parse_html_page(page_url: str) -> tuple[bytes, Any, str, MetaCollector]:
-    body, headers, final_url = read_url(page_url, "text/html,application/xhtml+xml,*/*;q=0.8")
+def parse_html_page(page_url: str, cookie_header: str | None = None) -> tuple[bytes, Any, str, MetaCollector]:
+    body, headers, final_url = read_url(page_url, "text/html,application/xhtml+xml,*/*;q=0.8", cookie_header=cookie_header)
     collector = MetaCollector()
     collector.feed(body.decode("utf-8", errors="ignore"))
     return body, headers, final_url, collector
@@ -293,8 +302,8 @@ def fallback_resolution(
     )
 
 
-def resolve_from_page(input_value: str, page_url: str, source_type: str, source_id: str) -> Resolution:
-    body, headers, final_url, collector = parse_html_page(page_url)
+def resolve_from_page(input_value: str, page_url: str, source_type: str, source_id: str, cookie_header: str | None = None) -> Resolution:
+    body, headers, final_url, collector = parse_html_page(page_url, cookie_header=cookie_header)
     content_type = getattr(headers, "get_content_type", lambda: "")()
     if body.startswith(b"%PDF") or content_type == "application/pdf":
         return fallback_resolution(
@@ -320,7 +329,7 @@ def resolve_from_page(input_value: str, page_url: str, source_type: str, source_
     )
 
 
-def resolve_input(value: str) -> Resolution:
+def resolve_input(value: str, cookie_header: str | None = None) -> Resolution:
     arxiv_id = parse_arxiv_id(value)
     if arxiv_id:
         abs_url = f"https://arxiv.org/abs/{arxiv_id}"
@@ -330,6 +339,7 @@ def resolve_input(value: str) -> Resolution:
                 page_url=abs_url,
                 source_type="arxiv",
                 source_id=arxiv_id,
+                cookie_header=cookie_header,
             )
         except (HTTPError, URLError):
             resolution = fallback_resolution(
@@ -354,6 +364,7 @@ def resolve_input(value: str) -> Resolution:
                 page_url=forum_url,
                 source_type="openreview",
                 source_id=openreview_id,
+                cookie_header=cookie_header,
             )
         except (HTTPError, URLError):
             resolution = fallback_resolution(
@@ -378,6 +389,7 @@ def resolve_input(value: str) -> Resolution:
                 page_url=doi_url,
                 source_type="doi",
                 source_id=doi,
+                cookie_header=cookie_header,
             )
         except (HTTPError, URLError):
             return fallback_resolution(
@@ -409,6 +421,7 @@ def resolve_input(value: str) -> Resolution:
         page_url=value.strip(),
         source_type="url",
         source_id=value.strip(),
+        cookie_header=cookie_header,
     )
 
 
@@ -449,8 +462,8 @@ def validate_pdf(content: bytes, headers: Any, url: str) -> None:
     raise ValueError(f"下载结果不是有效 PDF：{url}")
 
 
-def download_pdf(pdf_url: str) -> tuple[bytes, Any, str]:
-    return read_url(pdf_url, "application/pdf,*/*;q=0.8")
+def download_pdf(pdf_url: str, cookie_header: str | None = None) -> tuple[bytes, Any, str]:
+    return read_url(pdf_url, "application/pdf,*/*;q=0.8", cookie_header=cookie_header)
 
 
 def source_record_path(dest: Path) -> Path:
@@ -529,9 +542,43 @@ def emit(payload: dict[str, Any], json_mode: bool) -> None:
 def main(argv: Iterable[str]) -> int:
     args = parse_args(argv)
     output_dir = Path(args.output_dir)
+    cookie_header = None
+
+    inspection = inspect_reference(args.input)
+    if inspection.requires_auth:
+        account = resolve_site_account(inspection.site_key)
+        if not account:
+            payload = {
+                "status": "auth_required",
+                "site_key": inspection.site_key,
+                "message": "该站点需要先配置站点账号并完成登录。",
+                "resume_reference": args.input,
+            }
+            emit(payload, args.json)
+            return 1
+        account_label = str(account.get("account_label") or "").strip()
+        if not session_is_valid(str(inspection.site_key), account_label):
+            payload = {
+                "status": "auth_required",
+                "site_key": inspection.site_key,
+                "message": "站点登录会话已失效，请先重新登录。",
+                "resume_reference": args.input,
+            }
+            emit(payload, args.json)
+            return 1
+        cookie_header = authenticated_cookie_header(str(inspection.site_key), account_label)
+        if not cookie_header:
+            payload = {
+                "status": "auth_required",
+                "site_key": inspection.site_key,
+                "message": "未读取到可复用的站点会话 Cookie，请先重新登录。",
+                "resume_reference": args.input,
+            }
+            emit(payload, args.json)
+            return 1
 
     try:
-        resolution = resolve_input(args.input)
+        resolution = resolve_input(args.input, cookie_header=cookie_header)
         if not resolution.pdf_url:
             raise ValueError("未解析到稳定的 PDF 链接。")
         filename = choose_filename(args.filename, resolution)
@@ -577,7 +624,7 @@ def main(argv: Iterable[str]) -> int:
         return 0
 
     try:
-        content, headers, final_pdf_url = download_pdf(resolution.pdf_url)
+        content, headers, final_pdf_url = download_pdf(resolution.pdf_url, cookie_header=cookie_header)
         validate_pdf(content, headers, final_pdf_url)
         resolution.pdf_url = final_pdf_url
         write_file(content, dest)
@@ -586,6 +633,7 @@ def main(argv: Iterable[str]) -> int:
         payload = {
             "status": "error",
             "error": f"下载失败：{exc}",
+            "site_key": inspection.site_key,
             "landing_url": resolution.landing_url,
             "resolved_pdf_url": resolution.pdf_url,
             "candidates": resolution.candidates[:6],
