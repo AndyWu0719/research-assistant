@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -30,6 +31,10 @@ def session_cookie_store(root: Path, site_key: str, account_label: str) -> Path:
     return session_storage_dir(root, site_key, account_label) / "profile"
 
 
+def session_cookie_file(root: Path, site_key: str, account_label: str) -> Path:
+    return session_storage_dir(root, site_key, account_label) / "cookies.json"
+
+
 def resolve_site_account(site_key: str | None) -> dict[str, object] | None:
     if not site_key:
         return None
@@ -40,9 +45,21 @@ def resolve_site_account(site_key: str | None) -> dict[str, object] | None:
     return None
 
 
+def load_session_cookies(site_key: str, account_label: str, root: Path | None = None) -> list[dict[str, str]]:
+    path = session_cookie_file(root or SITE_SESSIONS_DIR, site_key, account_label)
+    if not path.exists():
+        return []
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return [item for item in payload if isinstance(item, dict) and item.get("name") and item.get("value")]
+
+
+def authenticated_cookie_header(site_key: str, account_label: str, root: Path | None = None) -> str:
+    cookies = load_session_cookies(site_key, account_label, root=root)
+    return "; ".join(f"{item['name']}={item['value']}" for item in cookies)
+
+
 def session_is_valid(site_key: str, account_label: str, root: Path | None = None) -> bool:
-    cookie_store = session_cookie_store(root or SITE_SESSIONS_DIR, site_key, account_label)
-    return cookie_store.exists() and any(cookie_store.iterdir())
+    return bool(load_session_cookies(site_key, account_label, root=root))
 
 
 def maybe_handle_protected_site(

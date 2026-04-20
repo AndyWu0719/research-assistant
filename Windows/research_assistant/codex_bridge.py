@@ -972,6 +972,19 @@ def run_paper_reader(task_input: PaperReaderInput) -> BridgeResponse:
                 language=language,
             )
         )
+        if download_response.status == "auth_required":
+            return BridgeResponse(
+                task_type="paper_reader",
+                status="auth_required",
+                mode=download_response.mode,
+                message=download_response.message,
+                quality_profile=reader_quality.name,
+                model=reader_quality.model,
+                reasoning_effort=reader_quality.reasoning_effort,
+                control_level="site-login-required",
+                error=download_response.error or download_response.message,
+                payload={"fetch": download_response.to_dict()},
+            )
         if download_response.status not in {"success", "ok"}:
             return BridgeResponse(
                 task_type="paper_reader",
@@ -1114,6 +1127,20 @@ def run_paper_fetch(task_input: PaperFetcherInput) -> BridgeResponse:
     source_record = payload.get("source_record")
 
     if process["returncode"] != 0:
+        if payload.get("status") == "auth_required":
+            return BridgeResponse(
+                task_type="paper_fetcher",
+                status="auth_required",
+                mode="site-login",
+                message=str(payload.get("message") or ("Site login is required." if is_english(language) else "需要先完成站点登录。")),
+                quality_profile=quality.name,
+                model=None,
+                reasoning_effort=None,
+                control_level="site-login-required",
+                output_paths={},
+                error=str(payload.get("error") or payload.get("message") or ""),
+                payload={**(payload or {"stderr": process["stderr"].strip()}), "raw_message": raw_message},
+            )
         return BridgeResponse(
             task_type="paper_fetcher",
             status="error",

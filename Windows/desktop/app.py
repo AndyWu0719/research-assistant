@@ -43,6 +43,7 @@ from PySide6.QtWidgets import (
 
 from desktop.runtime import is_frozen_app, runtime_project_root, scheduler_command, workspace_root
 from desktop.site_account_dialog import SiteAccountDialog, site_account_summary_text
+from desktop.site_login_dialog import ensure_site_login
 from desktop.time_range_controls import CompactTimeRangeRow
 from research_assistant.app_update import (
     check_for_updates,
@@ -1469,6 +1470,18 @@ class PaperReaderPage(BaseTaskPage):
         if path:
             self.reference_input.setText(path)
 
+    def start_task(self) -> None:
+        reference = self.reference_input.text().strip()
+        if self.auto_fetch_checkbox.isChecked() and reference:
+            login_state = ensure_site_login(reference, self.language, self)
+            if login_state.get("status") == "auth_required":
+                QMessageBox.information(self, ui_text("站点登录", "Site Login", self.language), str(login_state.get("message") or ""))
+                self.open_site_account_center()
+                return
+            if login_state.get("status") == "canceled":
+                return
+        super().start_task()
+
     def execute_task(self) -> BridgeResponse:
         preferences = load_user_preferences()
         reference = self.reference_input.text().strip()
@@ -1844,6 +1857,18 @@ class PDFDownloaderPage(BaseTaskPage):
 
     def output_directory(self) -> Path:
         return Path(self.output_dir_input.text().strip() or str(OUTPUTS_DIR / "pdfs"))
+
+    def start_task(self) -> None:
+        references = [line.strip() for line in self.references_edit.toPlainText().splitlines() if line.strip()]
+        for reference in references:
+            login_state = ensure_site_login(reference, self.language, self)
+            if login_state.get("status") == "auth_required":
+                QMessageBox.information(self, ui_text("站点登录", "Site Login", self.language), str(login_state.get("message") or ""))
+                self.open_site_account_center()
+                return
+            if login_state.get("status") == "canceled":
+                return
+        super().start_task()
 
     def execute_task(self) -> dict[str, Any]:
         preferences = load_user_preferences()

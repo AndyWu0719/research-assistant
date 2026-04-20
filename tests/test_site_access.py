@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 import tempfile
 import unittest
@@ -51,6 +52,19 @@ class SiteAccessTests(unittest.TestCase):
             root = Path(temp_dir)
             path = self.module.session_storage_dir(root, "jstor", "HKU")
             self.assertEqual(path, root / "jstor" / "HKU")
+
+    def test_session_cookie_file_enables_cookie_header_reuse(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            session_dir = self.module.session_storage_dir(root, "jstor", "HKU")
+            session_dir.mkdir(parents=True, exist_ok=True)
+            cookies_path = session_dir / "cookies.json"
+            cookies_path.write_text(
+                json.dumps([{"name": "sid", "value": "abc"}, {"name": "jwt", "value": "xyz"}], ensure_ascii=False),
+                encoding="utf-8",
+            )
+            self.assertTrue(self.module.session_is_valid("jstor", "HKU", root))
+            self.assertEqual(self.module.authenticated_cookie_header("jstor", "HKU", root), "sid=abc; jwt=xyz")
 
     def test_missing_account_returns_auth_required(self) -> None:
         response = self.module.maybe_handle_protected_site(
