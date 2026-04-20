@@ -244,6 +244,10 @@ DEFAULT_USER_PREFERENCES: dict[str, Any] = {
         "task_name": DEFAULT_AUTOMATION_CONFIG["task_name"],
         "filename": None,
     },
+    "site_accounts": {
+        "records": [],
+        "active_site_filter": "all",
+    },
 }
 
 DEFAULT_APP_UPDATE_CONFIG: dict[str, Any] = {
@@ -611,6 +615,43 @@ def resolve_quality_profile(value: str | None, task_type: str | None = None) -> 
     return profile
 
 
+def normalize_site_account_record(record: dict[str, Any]) -> dict[str, Any]:
+    payload = {
+        "site_key": str(record.get("site_key") or "").strip(),
+        "account_label": str(record.get("account_label") or "").strip(),
+        "username_hint": str(record.get("username_hint") or "").strip(),
+        "login_mode": str(record.get("login_mode") or "direct").strip() or "direct",
+        "institution_hint": str(record.get("institution_hint") or "").strip(),
+        "auto_fill_enabled": bool(record.get("auto_fill_enabled", True)),
+        "has_secret": bool(record.get("has_secret", False)),
+        "last_login_success_at": str(record.get("last_login_success_at") or "").strip(),
+        "last_session_refresh_at": str(record.get("last_session_refresh_at") or "").strip(),
+    }
+    return payload
+
+
+def load_site_account_preferences() -> dict[str, Any]:
+    site_accounts = deepcopy(load_user_preferences().get("site_accounts") or DEFAULT_USER_PREFERENCES["site_accounts"])
+    records = site_accounts.get("records") or []
+    site_accounts["records"] = [normalize_site_account_record(record) for record in records if isinstance(record, dict)]
+    site_accounts["active_site_filter"] = str(site_accounts.get("active_site_filter") or "all").strip() or "all"
+    return site_accounts
+
+
+def save_site_account_preferences(site_accounts: dict[str, Any]) -> dict[str, Any]:
+    payload = {
+        "records": [
+            normalize_site_account_record(record)
+            for record in site_accounts.get("records") or []
+            if isinstance(record, dict)
+            and str(record.get("site_key") or "").strip()
+            and str(record.get("account_label") or "").strip()
+        ],
+        "active_site_filter": str(site_accounts.get("active_site_filter") or "all").strip() or "all",
+    }
+    return update_user_preferences({"site_accounts": payload})
+
+
 def load_user_preferences() -> dict[str, Any]:
     payload = load_yaml(USER_PREFERENCES_PATH, DEFAULT_USER_PREFERENCES)
     payload = deep_merge(DEFAULT_USER_PREFERENCES, payload)
@@ -634,6 +675,15 @@ def load_user_preferences() -> dict[str, Any]:
     task_defaults["idea_feasibility"]["risk_preference"] = normalize_risk_preference(
         task_defaults["idea_feasibility"].get("risk_preference")
     )
+    site_accounts = payload.setdefault("site_accounts", deepcopy(DEFAULT_USER_PREFERENCES["site_accounts"]))
+    site_accounts["records"] = [
+        normalize_site_account_record(record)
+        for record in site_accounts.get("records") or []
+        if isinstance(record, dict)
+        and str(record.get("site_key") or "").strip()
+        and str(record.get("account_label") or "").strip()
+    ]
+    site_accounts["active_site_filter"] = str(site_accounts.get("active_site_filter") or "all").strip() or "all"
     active_automation = payload.setdefault("active_automation", {})
     current_path = current_automation_config_path()
     current_config = load_yaml(current_path, DEFAULT_AUTOMATION_CONFIG)
@@ -659,6 +709,15 @@ def save_user_preferences(preferences: dict[str, Any]) -> None:
     task_defaults["idea_feasibility"]["risk_preference"] = normalize_risk_preference(
         task_defaults["idea_feasibility"].get("risk_preference")
     )
+    site_accounts = payload.setdefault("site_accounts", deepcopy(DEFAULT_USER_PREFERENCES["site_accounts"]))
+    site_accounts["records"] = [
+        normalize_site_account_record(record)
+        for record in site_accounts.get("records") or []
+        if isinstance(record, dict)
+        and str(record.get("site_key") or "").strip()
+        and str(record.get("account_label") or "").strip()
+    ]
+    site_accounts["active_site_filter"] = str(site_accounts.get("active_site_filter") or "all").strip() or "all"
     save_yaml(USER_PREFERENCES_PATH, payload)
 
 
