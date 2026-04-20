@@ -147,9 +147,19 @@ def pyinstaller_add_data(source: Path, destination: str) -> str:
 
 def pyinstaller_extra_args(platform: str) -> list[str]:
     normalized = str(platform or "").strip().lower()
+    extra = [
+        "--hidden-import",
+        "PySide6.QtWebEngineWidgets",
+        "--hidden-import",
+        "PySide6.QtWebEngineCore",
+        "--collect-submodules",
+        "PySide6.QtWebEngineWidgets",
+        "--collect-submodules",
+        "PySide6.QtWebEngineCore",
+    ]
     if normalized == "windows":
-        return ["--collect-all", "tzdata"]
-    return []
+        extra.extend(["--collect-all", "tzdata"])
+    return extra
 
 
 def resolve_makensis() -> str:

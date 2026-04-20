@@ -145,6 +145,23 @@ def pyinstaller_add_data(source: Path, destination: str) -> str:
     return f"{source}{separator}{destination}"
 
 
+def pyinstaller_extra_args(platform: str) -> list[str]:
+    normalized = str(platform or "").strip().lower()
+    extra = [
+        "--hidden-import",
+        "PySide6.QtWebEngineWidgets",
+        "--hidden-import",
+        "PySide6.QtWebEngineCore",
+        "--collect-submodules",
+        "PySide6.QtWebEngineWidgets",
+        "--collect-submodules",
+        "PySide6.QtWebEngineCore",
+    ]
+    if normalized == "windows":
+        extra.extend(["--collect-all", "tzdata"])
+    return extra
+
+
 def resolve_makensis() -> str:
     executable = shutil.which("makensis")
     if executable:
@@ -229,6 +246,7 @@ def build_macos(version: str, *, keep_intermediates: bool = False) -> dict[str, 
         str(pyinstaller_spec),
         "--add-data",
         add_data_arg,
+        *pyinstaller_extra_args("macos"),
         str(ROOT / "desktop" / "main.py"),
     ]
     run(command, cwd=ROOT)
@@ -295,6 +313,7 @@ def build_windows(version: str, *, keep_intermediates: bool = False) -> dict[str
         str(pyinstaller_spec),
         "--add-data",
         pyinstaller_add_data(template_root, "project_template"),
+        *pyinstaller_extra_args("windows"),
         str(ROOT / "desktop" / "main.py"),
     ]
     run(command, cwd=ROOT)
