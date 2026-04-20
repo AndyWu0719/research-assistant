@@ -24,6 +24,13 @@ Preferred contribution target:
 - mirror intentionally into `Windows/` when the behavior should stay symmetric
 - treat the root as a thin compatibility layer; only touch it when maintaining wrappers, version plumbing, or retirement work
 
+If your change touches protected paper access:
+
+- keep secrets out of tracked config files
+- use Keychain on macOS and Credential Manager on Windows
+- treat MFA as user-completed but compatible, not fully automated
+- keep public-source download behavior unchanged unless there is a real bug
+
 ## Before Opening A Pull Request
 
 Please keep changes focused and include the following checks when relevant:

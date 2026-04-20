@@ -38,8 +38,8 @@ class CompactTimeRangeRow(QWidget):
         layout.addWidget(self.unit_combo)
         layout.addStretch(1)
 
-        self.value_combo.currentIndexChanged.connect(self.changed.emit)
-        self.unit_combo.currentIndexChanged.connect(self.changed.emit)
+        self.value_combo.currentIndexChanged.connect(lambda *_args: self.changed.emit())
+        self.unit_combo.currentIndexChanged.connect(lambda *_args: self.changed.emit())
 
     def payload(self) -> dict[str, object]:
         return serialize_compact_range(int(self.value_combo.currentData()), str(self.unit_combo.currentData()))
