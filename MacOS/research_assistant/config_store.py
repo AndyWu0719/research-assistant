@@ -13,6 +13,7 @@ from typing import Any
 import yaml
 
 from research_assistant.language import DEFAULT_LANGUAGE, normalize_language
+from research_assistant.site_catalog import compact_time_range_to_payload, discovery_source_options
 from research_assistant.ui_text import normalize_risk_preference, normalize_summary_depth
 
 
@@ -54,27 +55,18 @@ QUALITY_PROFILE_OPTIONS = [
     "high-accuracy",
     "max-analysis",
 ]
-SOURCE_OPTIONS = [
-    "arXiv",
-    "OpenReview",
-    "ACL Anthology",
-    "CVF Open Access",
-    "PMLR",
-    "Semantic Scholar",
-    "Crossref",
-    "Google Scholar",
-]
+SOURCE_OPTIONS = discovery_source_options()
 RANKING_PROFILES = [
     "balanced-default",
     "trend-focused",
     "resource-constrained",
 ]
 TIME_RANGE_OPTIONS = {
-    "7d": {"mode": "rolling", "days": 7, "label": "最近 7 天"},
-    "14d": {"mode": "rolling", "days": 14, "label": "最近 14 天"},
-    "30d": {"mode": "rolling", "days": 30, "label": "最近 30 天"},
-    "90d": {"mode": "rolling", "days": 90, "label": "最近 90 天"},
-    "1y": {"mode": "rolling", "days": 365, "label": "最近 1 年"},
+    "7d": compact_time_range_to_payload(7, "day"),
+    "14d": compact_time_range_to_payload(14, "day"),
+    "30d": compact_time_range_to_payload(30, "day"),
+    "90d": compact_time_range_to_payload(90, "day"),
+    "1y": compact_time_range_to_payload(1, "year"),
 }
 
 DEFAULT_SCAN_DEFAULTS: dict[str, Any] = {
