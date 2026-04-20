@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from copy import deepcopy
 from urllib.parse import urlparse
 
 
@@ -80,10 +79,6 @@ def discovery_source_options() -> list[str]:
 
 def protected_site_keys() -> list[str]:
     return list(PROTECTED_SITES.keys())
-
-
-def protected_site_catalog() -> dict[str, dict[str, object]]:
-    return deepcopy(PROTECTED_SITES)
 
 
 def detect_protected_site(url: str) -> str | None:

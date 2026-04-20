@@ -71,7 +71,7 @@ TIME_RANGE_OPTIONS = {
 
 DEFAULT_SCAN_DEFAULTS: dict[str, Any] = {
     "field": "multimodal large language models",
-    "time_range": {"mode": "rolling", "days": 7, "label": "最近 7 天"},
+    "time_range": deepcopy(TIME_RANGE_OPTIONS["7d"]),
     "sources": deepcopy(DEFAULT_SOURCES),
     "ranking_profile": DEFAULT_RANKING_PROFILE,
     "quality_profile": DEFAULT_QUALITY_PROFILE,
@@ -403,7 +403,12 @@ def normalize_time_range(value: str | dict[str, Any]) -> dict[str, Any]:
         if "label" not in merged:
             days = merged.get("days")
             if days:
-                merged["label"] = f"最近 {days} 天"
+                normalized_days = max(1, int(days))
+                merged = (
+                    compact_time_range_to_payload(normalized_days // 365, "year")
+                    if normalized_days >= 365 and normalized_days % 365 == 0
+                    else compact_time_range_to_payload(normalized_days, "day")
+                )
         return merged
     return deepcopy(TIME_RANGE_OPTIONS.get(value, TIME_RANGE_OPTIONS["7d"]))
 
