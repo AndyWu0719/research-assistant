@@ -42,6 +42,8 @@ from PySide6.QtWidgets import (
 )
 
 from desktop.runtime import is_frozen_app, runtime_project_root, scheduler_command, workspace_root
+from desktop.site_account_dialog import SiteAccountDialog, site_account_summary_text
+from desktop.time_range_controls import CompactTimeRangeRow
 from research_assistant.app_update import (
     check_for_updates,
     current_version,
@@ -880,8 +882,11 @@ class BaseTaskPage(ScrollPage):
         self._worker: WorkerThread | None = None
         self._focus_order: list[QWidget] = []
         self._shortcuts: list[QShortcut] = []
+        self._site_account_opener: Callable[[], None] | None = None
         self.current_output_path: Path | None = None
         self.current_loaded_result: LoadedResult | None = None
+        self.site_account_summary_label: QLabel | None = None
+        self.site_account_manage_button: QPushButton | None = None
         self.result_panel = ResultPanel(self.language)
         self.status_box = readonly_plaintext(140)
         self.recent_combo = styled_combo_box()
@@ -915,6 +920,30 @@ class BaseTaskPage(ScrollPage):
             if widget is None or widget in self._focus_order:
                 continue
             self._focus_order.append(widget)
+
+    def set_site_account_opener(self, callback: Callable[[], None]) -> None:
+        self._site_account_opener = callback
+
+    def open_site_account_center(self) -> None:
+        if self._site_account_opener:
+            self._site_account_opener()
+
+    def build_site_account_summary_row(self) -> QWidget:
+        row = QWidget()
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
+        self.site_account_summary_label = QLabel(site_account_summary_text(self.language))
+        self.site_account_summary_label.setWordWrap(True)
+        self.site_account_manage_button = set_secondary(QPushButton(ui_text("管理站点账号", "Manage Site Accounts", self.language)))
+        self.site_account_manage_button.clicked.connect(self.open_site_account_center)
+        layout.addWidget(self.site_account_summary_label, 1)
+        layout.addWidget(self.site_account_manage_button)
+        return row
+
+    def refresh_site_account_summary(self) -> None:
+        if self.site_account_summary_label is not None:
+            self.site_account_summary_label.setText(site_account_summary_text(self.language))
 
     def focus_primary_field(self) -> None:
         if not self._focus_order:
@@ -1128,16 +1157,15 @@ class LiteratureScoutPage(BaseTaskPage):
         self.field_input = QLineEdit(global_defaults.get("field") or scan_defaults["field"])
         add_form_row(scope_form, t("common.field", self.language), self.field_input)
 
-        self.time_combo = styled_combo_box()
+        self.time_range_row = CompactTimeRangeRow(self.language)
         default_time = global_defaults.get("time_range_key") or time_range_key(scan_defaults["time_range"])
-        for key, value in TIME_RANGE_OPTIONS.items():
-            self.time_combo.addItem(time_range_label(value, self.language), key)
-        self.time_combo.setCurrentIndex(max(0, self.time_combo.findData(default_time)))
-        add_form_row(scope_form, t("common.time_range", self.language), self.time_combo)
+        self.time_range_row.set_payload(TIME_RANGE_OPTIONS.get(default_time, scan_defaults["time_range"]))
+        add_form_row(scope_form, t("common.time_range", self.language), self.time_range_row)
 
         default_sources = global_defaults.get("sources") or scan_defaults["sources"]
         self.sources_list = MultiSelectList(SOURCE_OPTIONS, default_sources)
         add_form_row(scope_form, t("common.sources", self.language), self.sources_list)
+        add_form_row(scope_form, ui_text("站点账号", "Site Accounts", self.language), self.build_site_account_summary_row())
         layout.addWidget(scope_section)
 
         strategy_section, strategy_form = create_field_form_section(
@@ -1182,7 +1210,8 @@ class LiteratureScoutPage(BaseTaskPage):
 
         self.register_focus_widgets(
             self.field_input,
-            self.time_combo,
+            self.time_range_row.value_combo,
+            self.time_range_row.unit_combo,
             self.sources_list,
             self.ranking_combo,
             self.quality_combo,
@@ -1222,7 +1251,7 @@ class LiteratureScoutPage(BaseTaskPage):
         field = self.field_input.text().strip()
         if not field:
             raise ValueError(ui_text("请先填写研究方向。", "Please enter a research area first.", self.language))
-        selected_time = self.time_combo.currentData()
+        selected_time = self.time_range_row.payload()
         sources = self.sources_list.selected_values() or scan_defaults["sources"]
         constraints = self.constraints_edit.toPlainText().strip()
 
@@ -1230,7 +1259,7 @@ class LiteratureScoutPage(BaseTaskPage):
             {
                 "global_defaults": {
                     "field": field,
-                    "time_range_key": selected_time,
+                    "time_range_key": time_range_key(selected_time),
                     "sources": sources,
                     "ranking_profile": self.ranking_combo.currentData(),
                     "constraints": {
@@ -1254,7 +1283,7 @@ class LiteratureScoutPage(BaseTaskPage):
             save_scan_defaults(
                 {
                     "field": field,
-                    "time_range": TIME_RANGE_OPTIONS[selected_time],
+                    "time_range": selected_time,
                     "sources": sources,
                     "ranking_profile": self.ranking_combo.currentData(),
                     "quality_profile": self.quality_combo.currentData(),
@@ -1273,7 +1302,7 @@ class LiteratureScoutPage(BaseTaskPage):
         return run_literature_scout(
             LiteratureScoutInput(
                 field=field,
-                time_range=TIME_RANGE_OPTIONS[selected_time],
+                time_range=selected_time,
                 sources=sources,
                 ranking_profile=self.ranking_combo.currentData(),
                 constraints=constraints,
@@ -1393,6 +1422,7 @@ class PaperReaderPage(BaseTaskPage):
         path_layout.addWidget(self.reference_input, 1)
         path_layout.addWidget(self.browse_pdf_button)
         add_form_row(input_form, t("paper_reader.paper_reference", self.language), path_row)
+        add_form_row(input_form, ui_text("站点账号", "Site Accounts", self.language), self.build_site_account_summary_row())
         layout.addWidget(input_section)
 
         strategy_section, strategy_form = create_field_form_section(
@@ -1491,11 +1521,9 @@ class TopicMapperPage(BaseTaskPage):
         self.topic_edit.setPlaceholderText(t("topic_mapper.topic_placeholder", self.language))
         add_form_row(topic_form, t("topic_mapper.topic", self.language), self.topic_edit)
 
-        self.time_combo = styled_combo_box()
-        for key, value in TIME_RANGE_OPTIONS.items():
-            self.time_combo.addItem(time_range_label(value, self.language), key)
-        self.time_combo.setCurrentIndex(max(0, self.time_combo.findData(task_defaults.get("time_range_key", "30d"))))
-        add_form_row(topic_form, t("common.time_range", self.language), self.time_combo)
+        self.time_range_row = CompactTimeRangeRow(self.language)
+        self.time_range_row.set_payload(TIME_RANGE_OPTIONS.get(task_defaults.get("time_range_key", "30d"), TIME_RANGE_OPTIONS["30d"]))
+        add_form_row(topic_form, t("common.time_range", self.language), self.time_range_row)
         layout.addWidget(topic_section)
 
         strategy_section, strategy_form = create_field_form_section(
@@ -1526,7 +1554,8 @@ class TopicMapperPage(BaseTaskPage):
 
         self.register_focus_widgets(
             self.topic_edit,
-            self.time_combo,
+            self.time_range_row.value_combo,
+            self.time_range_row.unit_combo,
             self.quality_combo,
             self.cross_domain_checkbox,
             self.return_count_spin,
@@ -1543,7 +1572,7 @@ class TopicMapperPage(BaseTaskPage):
                 "task_defaults": {
                     "topic_mapper": {
                         "quality_profile": self.quality_combo.currentData(),
-                        "time_range_key": self.time_combo.currentData(),
+                        "time_range_key": time_range_key(self.time_range_row.payload()),
                         "cross_domain": self.cross_domain_checkbox.isChecked(),
                         "return_count": int(self.return_count_spin.value()),
                         "ranking_mode": self.ranking_combo.currentData(),
@@ -1554,7 +1583,7 @@ class TopicMapperPage(BaseTaskPage):
         return run_topic_mapper(
             TopicMapperInput(
                 topic=topic,
-                time_range=TIME_RANGE_OPTIONS[self.time_combo.currentData()],
+                time_range=self.time_range_row.payload(),
                 cross_domain=self.cross_domain_checkbox.isChecked(),
                 return_count=int(self.return_count_spin.value()),
                 ranking_mode=self.ranking_combo.currentData(),
@@ -1767,6 +1796,7 @@ class PDFDownloaderPage(BaseTaskPage):
         self.references_edit.setMinimumHeight(160)
         self.references_edit.setPlaceholderText(t("pdf_fetcher.references_placeholder", self.language))
         add_form_row(input_form, t("pdf_fetcher.references", self.language), self.references_edit)
+        add_form_row(input_form, ui_text("站点账号", "Site Accounts", self.language), self.build_site_account_summary_row())
 
         output_row = QWidget()
         output_layout = QHBoxLayout(output_row)
@@ -1909,6 +1939,8 @@ class AutomationPage(ScrollPage):
         self._worker: WorkerThread | None = None
         self._focus_order: list[QWidget] = []
         self._shortcuts: list[QShortcut] = []
+        self._site_account_opener: Callable[[], None] | None = None
+        self.site_account_summary_label: QLabel | None = None
         self.result_panel = ResultPanel(self.language)
         self.status_box = readonly_plaintext(180)
         self.preview_browser = markdown_browser(180)
@@ -1948,13 +1980,12 @@ class AutomationPage(ScrollPage):
             ui_text("研究范围", "Research Scope", self.language),
             ui_text("统一设置时间窗、来源范围、排序方式和输出规模。", "Keep time range, sources, ranking mode, and output volume in one scope block.", self.language),
         )
-        self.time_combo = styled_combo_box()
-        for key, value in TIME_RANGE_OPTIONS.items():
-            self.time_combo.addItem(time_range_label(value, self.language), key)
-        add_form_row(scope_form, t("common.time_range", self.language), self.time_combo)
+        self.time_range_row = CompactTimeRangeRow(self.language)
+        add_form_row(scope_form, t("common.time_range", self.language), self.time_range_row)
 
         self.sources_list = MultiSelectList(SOURCE_OPTIONS)
         add_form_row(scope_form, t("common.sources", self.language), self.sources_list)
+        add_form_row(scope_form, ui_text("站点账号", "Site Accounts", self.language), self.build_site_account_summary_row())
 
         self.ranking_combo = styled_combo_box()
         for item in RANKING_PROFILES:
@@ -2062,7 +2093,8 @@ class AutomationPage(ScrollPage):
             self.task_name_input,
             self.field_input,
             self.output_language_combo,
-            self.time_combo,
+            self.time_range_row.value_combo,
+            self.time_range_row.unit_combo,
             self.sources_list,
             self.ranking_combo,
             self.quality_combo,
@@ -2078,7 +2110,6 @@ class AutomationPage(ScrollPage):
             self.field_input,
             self.run_time_input,
             self.constraints_edit,
-            self.time_combo,
             self.ranking_combo,
             self.quality_combo,
             self.output_language_combo,
@@ -2098,9 +2129,34 @@ class AutomationPage(ScrollPage):
             elif isinstance(widget, QCheckBox):
                 widget.stateChanged.connect(self.refresh_preview)
         self.sources_list.itemSelectionChanged.connect(self.refresh_preview)
+        self.time_range_row.changed.connect(self.refresh_preview)
 
         self._apply_tab_order()
         self._install_keyboard_flow()
+
+    def set_site_account_opener(self, callback: Callable[[], None]) -> None:
+        self._site_account_opener = callback
+
+    def open_site_account_center(self) -> None:
+        if self._site_account_opener:
+            self._site_account_opener()
+
+    def build_site_account_summary_row(self) -> QWidget:
+        row = QWidget()
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
+        self.site_account_summary_label = QLabel(site_account_summary_text(self.language))
+        self.site_account_summary_label.setWordWrap(True)
+        button = set_secondary(QPushButton(ui_text("管理站点账号", "Manage Site Accounts", self.language)))
+        button.clicked.connect(self.open_site_account_center)
+        layout.addWidget(self.site_account_summary_label, 1)
+        layout.addWidget(button)
+        return row
+
+    def refresh_site_account_summary(self) -> None:
+        if self.site_account_summary_label is not None:
+            self.site_account_summary_label.setText(site_account_summary_text(self.language))
 
     def register_focus_widgets(self, *widgets: QWidget) -> None:
         for widget in widgets:
@@ -2141,7 +2197,7 @@ class AutomationPage(ScrollPage):
         config = load_automation_config()
         self.task_name_input.setText(config["task_name"])
         self.field_input.setText(config["field"])
-        self.time_combo.setCurrentIndex(max(0, self.time_combo.findData(time_range_key(config["time_range"]))))
+        self.time_range_row.set_payload(config["time_range"])
         self.sources_list.set_selected_values(config["sources"])
         self.ranking_combo.setCurrentIndex(max(0, self.ranking_combo.findData(config["ranking_profile"])))
         self.quality_combo.setCurrentIndex(max(0, self.quality_combo.findData(config["quality_profile"])))
@@ -2164,7 +2220,7 @@ class AutomationPage(ScrollPage):
         return {
             "task_name": task_name,
             "field": field,
-            "time_range": TIME_RANGE_OPTIONS[self.time_combo.currentData()],
+            "time_range": self.time_range_row.payload(),
             "sources": self.sources_list.selected_values() or ["arXiv", "OpenReview"],
             "ranking_profile": self.ranking_combo.currentData(),
             "quality_profile": self.quality_combo.currentData(),
@@ -2437,6 +2493,10 @@ class ResearchAssistantWindow(QMainWindow):
         self.login_codex_button.clicked.connect(self.open_codex_login)
         topbar_layout.addWidget(self.login_codex_button)
 
+        self.site_accounts_button = set_secondary(QPushButton(ui_text("站点账号", "Site Accounts", self.language)))
+        self.site_accounts_button.clicked.connect(self.open_site_account_center)
+        topbar_layout.addWidget(self.site_accounts_button)
+
         open_runtime_button = set_secondary(QPushButton(ui_text("打开运行目录", "Open Runtime", self.language)))
         open_runtime_button.clicked.connect(lambda: open_local_path(runtime_project_root()))
         topbar_layout.addWidget(open_runtime_button)
@@ -2452,6 +2512,8 @@ class ResearchAssistantWindow(QMainWindow):
             item = QListWidgetItem(page_copy(page_key, self.language)["nav_label"])
             self.nav_list.addItem(item)
             page = page_cls(self.language)
+            if hasattr(page, "set_site_account_opener"):
+                getattr(page, "set_site_account_opener")(self.open_site_account_center)
             if hasattr(page, "set_page_navigator"):
                 getattr(page, "set_page_navigator")(self.navigate_to_page)
             self.pages.addWidget(page)
@@ -2485,6 +2547,14 @@ class ResearchAssistantWindow(QMainWindow):
         if page_key not in self.page_keys:
             return
         self.nav_list.setCurrentRow(self.page_keys.index(page_key))
+
+    def open_site_account_center(self) -> None:
+        dialog = SiteAccountDialog(self.language, self)
+        dialog.exec()
+        for index in range(self.pages.count()):
+            page = self.pages.widget(index)
+            if hasattr(page, "refresh_site_account_summary"):
+                getattr(page, "refresh_site_account_summary")()
 
     def _home_page(self) -> HomePage | None:
         if not hasattr(self, "pages") or "home" not in getattr(self, "page_keys", []):
