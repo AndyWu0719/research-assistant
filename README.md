@@ -2,9 +2,9 @@
 
 [简体中文](README.md) | [English](README.en.md)
 
-> 当前版本来源：root `VERSION`（当前为 `1.1.1`）
+> 当前版本来源：root `VERSION`（当前为 `1.1.2`）
 >
-> 最新已发布 release：`v1.1.1`
+> 最新已发布 release：`v1.1.2`
 
 `research-assistant` 是一个本地桌面研究工作台。桌面 UI 负责参数配置、状态展示、结果回读和更新提示；真实任务执行由本地 `Codex CLI` 完成；macOS / Windows 安装包都会在首次启动时自动准备本地 Codex CLI 运行环境；GitHub Releases 作为默认更新源。
 
@@ -260,7 +260,7 @@ python -m pip install -r MacOS/packaging/requirements-build.txt
 版本来源：
 
 - 默认从 root `VERSION` 读取
-- 当前值：`1.1.1`
+- 当前值：`1.1.2`
 - 需要临时覆盖时，仍可显式传 `--version <version>`
 
 ### macOS
@@ -274,7 +274,7 @@ python MacOS/scripts/build_installer.py --platform macos
 产物：
 
 - `MacOS/dist/installers/macos/pyinstaller/Research Assistant.app`
-- `MacOS/dist/installers/macos/ResearchAssistant-macos-1.1.1.pkg`
+- `MacOS/dist/installers/macos/ResearchAssistant-macos-1.1.2.pkg`
 
 签名与公证：
 
@@ -308,7 +308,7 @@ python Windows/scripts/build_installer.py --platform windows
 产物：
 
 - `Windows/dist/installers/windows/pyinstaller/Research Assistant/`
-- `Windows/dist/installers/windows/ResearchAssistant-windows-1.1.1.exe`
+- `Windows/dist/installers/windows/ResearchAssistant-windows-1.1.2.exe`
 
 CI 方案：
 
@@ -392,6 +392,6 @@ Windows 安装包 UI 验证：
 - GitHub 更新依赖你在 Release 中上传正确的平台安装包
 - 公共分发仍需要你自己的 Apple / Windows 签名体系
 - root 当前只保留 thin compatibility layer
-- release tag 仍建议使用带前缀形式，如 `v1.1.1`
-- 版本文件 `VERSION` 使用裸版本，如 `1.1.1`
-- 默认资产名会跟随版本生成：`ResearchAssistant-macos-1.1.1.pkg` / `ResearchAssistant-windows-1.1.1.exe`
+- release tag 仍建议使用带前缀形式，如 `v1.1.2`
+- 版本文件 `VERSION` 使用裸版本，如 `1.1.2`
+- 默认资产名会跟随版本生成：`ResearchAssistant-macos-1.1.2.pkg` / `ResearchAssistant-windows-1.1.2.exe`

@@ -2,9 +2,9 @@
 
 [简体中文](README.md) | [English](README.en.md)
 
-> Version source: root `VERSION` (currently `1.1.1`)
+> Version source: root `VERSION` (currently `1.1.2`)
 >
-> Latest published release: `v1.1.1`
+> Latest published release: `v1.1.2`
 
 `research-assistant` is a local desktop research workstation. The desktop UI handles task configuration, local status, result review, and update prompts; the real execution is performed by a local `Codex CLI`; packaged macOS and Windows installs automatically prepare the local Codex CLI runtime on first launch; GitHub Releases is the default update source.
 
@@ -261,7 +261,7 @@ python -m pip install -r MacOS/packaging/requirements-build.txt
 Version source:
 
 - the default version now comes from the root `VERSION` file
-- current value: `1.1.1`
+- current value: `1.1.2`
 - `--version <version>` still overrides it when needed
 
 ### macOS
@@ -275,7 +275,7 @@ python MacOS/scripts/build_installer.py --platform macos
 Artifacts:
 
 - `MacOS/dist/installers/macos/pyinstaller/Research Assistant.app`
-- `MacOS/dist/installers/macos/ResearchAssistant-macos-1.1.1.pkg`
+- `MacOS/dist/installers/macos/ResearchAssistant-macos-1.1.2.pkg`
 
 Signing and notarization:
 
@@ -309,7 +309,7 @@ python Windows/scripts/build_installer.py --platform windows
 Artifacts:
 
 - `Windows/dist/installers/windows/pyinstaller/Research Assistant/`
-- `Windows/dist/installers/windows/ResearchAssistant-windows-1.1.1.exe`
+- `Windows/dist/installers/windows/ResearchAssistant-windows-1.1.2.exe`
 
 CI option:
 
@@ -393,6 +393,6 @@ Reports are written to:
 - GitHub-based updates require the correct platform asset on each release
 - Public distribution still requires your own Apple / Windows signing setup
 - The root now exposes only a thin compatibility layer
-- Release tags should keep the `v` prefix, such as `v1.1.1`
-- The `VERSION` file stores the bare version, such as `1.1.1`
-- Default asset names now follow the version source: `ResearchAssistant-macos-1.1.1.pkg` and `ResearchAssistant-windows-1.1.1.exe`
+- Release tags should keep the `v` prefix, such as `v1.1.2`
+- The `VERSION` file stores the bare version, such as `1.1.2`
+- Default asset names now follow the version source: `ResearchAssistant-macos-1.1.2.pkg` and `ResearchAssistant-windows-1.1.2.exe`

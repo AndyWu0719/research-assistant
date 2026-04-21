@@ -50,8 +50,8 @@ If your change affects packaging:
 ## Version Management
 
 - The canonical default version now lives in the root `VERSION` file
-- Use a bare version there, for example `1.1.1`
-- Release tags should keep the `v` prefix, for example `v1.1.1`
+- Use a bare version there, for example `1.1.2`
+- Release tags should keep the `v` prefix, for example `v1.1.2`
 - Packaging scripts may still accept `--version`, but the root `VERSION` file is the default source
 
 ## Pull Request Expectations
