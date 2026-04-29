@@ -29,6 +29,7 @@ from research_assistant.prompt_builder import (
     build_topic_mapper_prompt,
 )
 from research_assistant.ui_text import is_english
+from research_assistant.windows_encoding import apply_utf8_child_env, utf8_subprocess_text_kwargs
 
 
 PAPER_FETCHER_SCRIPT = ROOT / "skills" / "paper-fetcher" / "scripts" / "download_paper.py"
@@ -365,9 +366,9 @@ def detect_codex_cli(refresh: bool = False, language: str | None = None) -> Code
             [executable, "--version"],
             cwd=ROOT,
             capture_output=True,
-            text=True,
             check=False,
-            env=codex_command_env(executable),
+            env=apply_utf8_child_env(codex_command_env(executable)),
+            **utf8_subprocess_text_kwargs(),
             **background_subprocess_kwargs(),
         )
         version = (version_process.stdout or version_process.stderr).strip() or None
@@ -385,9 +386,9 @@ def detect_codex_cli(refresh: bool = False, language: str | None = None) -> Code
             [executable, "login", "status"],
             cwd=ROOT,
             capture_output=True,
-            text=True,
             check=False,
-            env=codex_command_env(executable),
+            env=apply_utf8_child_env(codex_command_env(executable)),
+            **utf8_subprocess_text_kwargs(),
             **background_subprocess_kwargs(),
         )
         output = (login_process.stdout or login_process.stderr).strip()
@@ -725,10 +726,10 @@ def _invoke_codex_exec(prompt: str, quality: QualityProfileSelection, executable
             command,
             cwd=ROOT,
             capture_output=True,
-            text=True,
             input=prompt,
             check=False,
-            env=codex_command_env(executable),
+            env=apply_utf8_child_env(codex_command_env(executable)),
+            **utf8_subprocess_text_kwargs(),
             **background_subprocess_kwargs(),
         )
         last_message = last_message_path.read_text(encoding="utf-8").strip() if last_message_path.exists() else ""

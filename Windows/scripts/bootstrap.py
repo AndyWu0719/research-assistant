@@ -11,6 +11,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 VENV_DIR = ROOT / ".venv"
 
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from research_assistant.windows_encoding import apply_utf8_child_env, configure_utf8_stdio, utf8_subprocess_text_kwargs
+
 
 def find_executable(name: str, extra_candidates: list[Path] | None = None) -> str | None:
     resolved = shutil.which(name)
@@ -36,7 +41,7 @@ def venv_python() -> Path:
 
 
 def run(command: list[str], *, cwd: Path | None = None, check: bool = True) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(command, cwd=cwd or ROOT, text=True, check=check)
+    return subprocess.run(command, cwd=cwd or ROOT, check=check, env=apply_utf8_child_env(), **utf8_subprocess_text_kwargs())
 
 
 def ensure_venv() -> Path:
@@ -110,8 +115,9 @@ def codex_logged_in() -> bool:
         [executable, "login", "status"],
         cwd=ROOT,
         capture_output=True,
-        text=True,
         check=False,
+        env=apply_utf8_child_env(),
+        **utf8_subprocess_text_kwargs(),
     )
     output = (process.stdout or process.stderr).lower()
     return process.returncode == 0 and "logged in" in output
@@ -130,11 +136,12 @@ def launch_app(python_path: Path, without_scheduler: bool) -> int:
     command = [str(python_path), str(ROOT / "desktop" / "main.py")]
     if without_scheduler:
         command.append("--without-scheduler")
-    process = subprocess.run(command, cwd=ROOT, check=False)
+    process = subprocess.run(command, cwd=ROOT, check=False, env=apply_utf8_child_env())
     return process.returncode
 
 
 def main() -> int:
+    configure_utf8_stdio()
     args = parse_args()
     python_path = ensure_venv()
     ensure_python_requirements(python_path)

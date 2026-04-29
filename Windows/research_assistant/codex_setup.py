@@ -18,6 +18,7 @@ from typing import Any
 
 from research_assistant.language import normalize_language
 from research_assistant.ui_text import is_english
+from research_assistant.windows_encoding import apply_utf8_child_env, utf8_subprocess_text_kwargs
 
 
 APP_NAME = "Research Assistant"
@@ -247,9 +248,9 @@ def _command_output(command: list[str]) -> str:
     process = subprocess.run(
         command,
         capture_output=True,
-        text=True,
         check=False,
-        env=codex_command_env(command[0] if command else None),
+        env=apply_utf8_child_env(codex_command_env(command[0] if command else None)),
+        **utf8_subprocess_text_kwargs(),
         **background_subprocess_kwargs(),
     )
     output = (process.stdout or process.stderr or "").strip()
@@ -413,9 +414,9 @@ def _install_codex_with_npm(npm_executable: str, language: str) -> tuple[str, li
             "@openai/codex",
         ],
         capture_output=True,
-        text=True,
         check=False,
-        env=env,
+        env=apply_utf8_child_env(env),
+        **utf8_subprocess_text_kwargs(),
         **background_subprocess_kwargs(),
     )
     if process.returncode != 0:
@@ -530,9 +531,10 @@ def open_codex_login_terminal(language: str | None = None, executable: str | Non
         path_prefix = os.pathsep.join([str(managed_node_bin_dir()), str(managed_codex_bin_dir())]) if is_managed_codex_executable(target) else ""
         lines = [
             "@echo off",
+            "chcp 65001 >nul",
             "title Research Assistant - Codex Login",
-            f'echo {_localized("Research Assistant 已为你准备好 Codex 登录。", "Research Assistant has prepared Codex login for you.", lang)}',
-            f'echo {_localized("窗口会执行 codex login；完成授权后直接回到桌面端即可。", "This window will run codex login. Return to the desktop app after authorization.", lang)}',
+            'echo Research Assistant has prepared Codex login for you.',
+            'echo This window will run codex login. Return to the desktop app after authorization.',
             "echo.",
         ]
         if path_prefix:
@@ -543,17 +545,17 @@ def open_codex_login_terminal(language: str | None = None, executable: str | Non
                 "set STATUS=%ERRORLEVEL%",
                 "echo.",
                 "if \"%STATUS%\"==\"0\" (",
-                f'  echo {_localized("Codex 登录命令已结束。若浏览器授权成功，桌面端会在后续刷新中变为可执行。", "The Codex login command finished. If browser authorization succeeded, the desktop app will detect it on refresh.", lang)}',
+                '  echo The Codex login command finished. If browser authorization succeeded, the desktop app will detect it on refresh.',
                 ") else (",
-                f'  echo {_localized("Codex 登录命令退出状态：", "Codex login exited with status:", lang)} %STATUS%',
+                '  echo Codex login exited with status: %STATUS%',
                 ")",
                 "echo.",
-                f'echo {_localized("这个窗口可以直接关闭。", "You can close this window now.", lang)}',
+                'echo You can close this window now.',
                 "pause",
                 "",
             ]
         )
-        script_path.write_text("\r\n".join(lines), encoding="utf-8")
+        script_path.write_text("\r\n".join(lines), encoding="utf-8-sig")
     else:
         path_prefix = os.pathsep.join([str(managed_node_bin_dir()), str(managed_codex_bin_dir())]) if is_managed_codex_executable(target) else ""
         lines = [

@@ -21,6 +21,7 @@ from research_assistant.automation_runtime import automation_schedule_snapshot, 
 from research_assistant.codex_bridge import PaperFetcherInput, detect_codex_cli, run_paper_fetch
 from research_assistant.file_naming import smoke_report_path
 from research_assistant.config_store import ensure_project_layout
+from research_assistant.windows_encoding import configure_utf8_stdio
 from desktop.app import ResearchAssistantWindow
 
 
@@ -33,6 +34,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    configure_utf8_stdio()
     args = parse_args()
     project_root = configure_runtime_environment()
     ensure_project_layout()

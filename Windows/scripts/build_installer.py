@@ -10,6 +10,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+if str(Path(__file__).resolve().parents[1]) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from research_assistant.windows_encoding import apply_utf8_child_env, configure_utf8_stdio, utf8_subprocess_text_kwargs
+
 
 ROOT = Path(__file__).resolve().parents[1]
 APP_NAME = "Research Assistant"
@@ -61,7 +66,7 @@ def native_platform() -> str:
 
 
 def run(command: list[str], *, cwd: Path | None = None) -> None:
-    subprocess.run(command, cwd=cwd or ROOT, check=True, text=True)
+    subprocess.run(command, cwd=cwd or ROOT, check=True, env=apply_utf8_child_env(), **utf8_subprocess_text_kwargs())
 
 
 def clean_dir(path: Path) -> None:
@@ -356,6 +361,7 @@ def build_windows(version: str, *, keep_intermediates: bool = False) -> dict[str
 
 
 def main() -> int:
+    configure_utf8_stdio()
     args = parse_args()
     current = native_platform()
     target = current if args.platform == "auto" else args.platform

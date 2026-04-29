@@ -29,6 +29,7 @@ from research_assistant.config_store import (
     save_json,
 )
 from research_assistant.ui_text import is_english
+from research_assistant.windows_encoding import apply_utf8_child_env
 
 
 DEFAULT_POLL_INTERVAL_SECONDS = 60
@@ -337,6 +338,7 @@ def start_scheduler_daemon() -> dict[str, Any]:
     process = subprocess.Popen(
         [sys.executable, str(ROOT / "scripts" / "run_automation.py"), "--daemon"],
         cwd=ROOT,
+        env=apply_utf8_child_env(),
     )
     return {
         "status": "started",
