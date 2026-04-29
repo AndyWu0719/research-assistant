@@ -11,6 +11,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from desktop.runtime import configure_runtime_environment
+from research_assistant.windows_encoding import configure_utf8_stdio
 
 
 def parse_args() -> argparse.Namespace:
@@ -87,6 +88,7 @@ def launch_gui() -> int:
 
 
 def main() -> int:
+    configure_utf8_stdio()
     configure_runtime_environment()
     args = parse_args()
     if args.version or args.daemon or args.status or args.force or args.active_only:

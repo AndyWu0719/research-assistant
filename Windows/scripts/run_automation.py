@@ -20,6 +20,7 @@ from research_assistant.automation_runtime import (
 )
 from research_assistant.config_store import current_automation_config_path, list_automation_config_paths, load_automation_config
 from research_assistant.ui_text import is_english
+from research_assistant.windows_encoding import configure_utf8_stdio
 
 
 def parse_args() -> argparse.Namespace:
@@ -53,6 +54,7 @@ def print_status(active_only: bool) -> int:
 
 
 def main() -> int:
+    configure_utf8_stdio()
     args = parse_args()
     language = load_automation_config(current_automation_config_path()).get("language")
 

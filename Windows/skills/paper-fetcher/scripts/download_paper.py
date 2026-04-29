@@ -21,6 +21,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from research_assistant.site_access import authenticated_cookie_header, inspect_reference, resolve_site_account, session_is_valid
+from research_assistant.windows_encoding import configure_utf8_stdio
 
 
 USER_AGENT = "research-assistant-paper-fetcher/2.0"
@@ -540,6 +541,7 @@ def emit(payload: dict[str, Any], json_mode: bool) -> None:
 
 
 def main(argv: Iterable[str]) -> int:
+    configure_utf8_stdio()
     args = parse_args(argv)
     output_dir = Path(args.output_dir)
     cookie_header = None
